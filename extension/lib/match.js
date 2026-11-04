@@ -15,6 +15,8 @@ export const siteQuery = (query) => query.split(/\s+/).filter((w) => !w.startsWi
 export function pick(items, search) {
   return items
     .filter((i) => i.price > 0 && (!search.max || i.price <= search.max) && matchesQuery(i.title, search.q))
+    // search.min: AI-estimated floor that drops accessories and scrap priced far below the real thing
+    .filter((i) => !search.min || i.price >= search.min)
     // search.not: AI-suggested words that mark irrelevant listings
     .filter((i) => !(search.not ?? []).some((w) => i.title.toLowerCase().includes(stem(w))))
     .sort((a, b) => a.price - b.price);

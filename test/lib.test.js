@@ -146,3 +146,13 @@ test('parseRequestReply reads the AI JSON answer', async () => {
   assert.deepEqual(parseRequestReply('Ось: {"q": "перфоратор Bosch", "max": null}'), { q: 'перфоратор Bosch', max: null });
   assert.equal(parseRequestReply('{"q": null}'), null);
 });
+
+test('min price floor drops accessories and never exceeds half the budget', async () => {
+  const { parseMinPrice } = await import('../cloud/ai.js');
+  assert.equal(parseMinPrice('12 000', null), 3600);
+  assert.equal(parseMinPrice('Приблизно 2500 грн', 3000), 750);
+  assert.equal(parseMinPrice('12000', 4000), 2000);
+  assert.equal(parseMinPrice('не знаю', null), null);
+  const items = [{ title: 'Чохол iPhone 13', price: 25 }, { title: 'iPhone 13 128GB', price: 11000 }];
+  assert.deepEqual(pick(items, { q: 'iPhone 13', min: 3600 }).map((i) => i.price), [11000]);
+});

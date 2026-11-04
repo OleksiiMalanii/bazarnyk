@@ -5,7 +5,7 @@ import { handleCommand, addSearch, parseFree, listButtons, KEYBOARD, MENU } from
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
 import { escape } from '../extension/lib/html.js';
-import { suggestExcludes, parseRequest, AI_VERSION } from './ai.js';
+import { suggestExcludes, suggestMinPrice, parseRequest, AI_VERSION } from './ai.js';
 
 // Allo blocks GitHub servers (403), so the extension checks it instead.
 const SHOPS = { Prom: prom };
@@ -70,13 +70,15 @@ for (const { message: m, callback_query: cb } of updates) {
 for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) : []) {
   try {
     s.not = await suggestExcludes(s.q, ai);
+    s.min = await suggestMinPrice(s.q, s.max, ai);
     s.aiV = AI_VERSION;
   } catch (e) {
     console.error(`AI failed for "${s.q}": ${e.message}`); // retried on the next run
     continue;
   }
   s.best = null; // shop best may have been junk; re-evaluate with the new filter
-  await tg('sendMessage', { chat_id: chatId, text: `🤖 «${escape(s.q)}»: відкидатиму оголошення зі словами: ${escape(s.not.join(', '))}`, parse_mode: 'HTML' });
+  const floor = s.min ? `\nІгнорую дешевше за ${s.min} грн: зазвичай це аксесуари чи брухт.` : '';
+  await tg('sendMessage', { chat_id: chatId, text: `🤖 «${escape(s.q)}»: відкидатиму оголошення зі словами: ${escape(s.not.join(', '))}${floor}`, parse_mode: 'HTML' });
   changed = true;
 }
 // Save before confirming, so a crash re-processes commands instead of losing them.

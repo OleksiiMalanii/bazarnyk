@@ -9,14 +9,30 @@ const PROMPT =
   'сировина, інші товари з тим самим словом), але НЕ бувають у назвах потрібного товару. ' +
   'Лише іменники та прикметники, без службових слів (для, з, на). ' +
   'НЕ пиши слів, які можуть описувати сам потрібний товар: матеріали (сталева, алюмінієва, пластикова, дерев\'яна), ' +
-  'розміри, кольори, стан, бренди, його частини й аксесуари (кріплення, ремінь, гвинт). ' +
-  'Пиши українською, і якщо буває, ще російською. ' +
+  'розміри, кольори, стан, а також бренд і назву товару в інших мовах чи написаннях (для «iPhone» не пиши apple чи айфон). ' +
+  'Кожне слово давай українською і російською (чохол, чехол). ' +
   'Приклад для «драбина»: книга, кузнєцова, іграшка, іграшкова, конструктор, lego, пожежна, машинка, швелер, арматура, ' +
   'шведська, гімнастична, турнік, книга, игрушка, конструктор. ' +
   'Почни відповідь одразу з першого слова: лише слова через кому, без вступу й пояснень.';
 
 // Bump when the prompt or parsing changes: searches get their exclusions regenerated.
-export const AI_VERSION = 3;
+export const AI_VERSION = 4;
+
+const PRICE_PROMPT =
+  'Яка типова ціна вживаного товару за цим запитом на OLX в Україні, у гривнях? Відповідай лише одним числом.';
+
+// Accessories and scrap are far cheaper than the real thing, so ignore anything under 30% of a typical used price.
+export async function suggestMinPrice(query, max, ai) {
+  return parseMinPrice(await ask(query, PRICE_PROMPT, ai), max);
+}
+
+export function parseMinPrice(reply, max) {
+  const typical = Number(reply.replace(/(\d)[\s ](?=\d{3})/g, '$1').match(/\d+/)?.[0]);
+  if (!(typical > 0)) return null;
+  const min = Math.round((typical * 0.3) / 10) * 10;
+  // Never let the floor eat the user's own budget.
+  return max ? Math.min(min, Math.round(max / 2)) : min;
+}
 
 // Claude subscription: Claude Code in print mode, authenticated by CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`.
 async function askClaude(query, system) {
