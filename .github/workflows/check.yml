@@ -2,7 +2,7 @@ name: check
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/30 * * * *' # private repo: 2000 free Actions min/month, every 15 min would exceed it
   workflow_dispatch:
 
 concurrency:

@@ -1,4 +1,4 @@
-// Cloud job (GitHub Actions, every 15 min): answers bot commands and checks shops hourly.
+// Cloud job (GitHub Actions, every 30 min): answers bot commands and checks shops hourly.
 import { telegram, formatList } from '../extension/lib/telegram.js';
 import { loadState, saveState } from '../extension/lib/state.js';
 import { handleCommand } from '../extension/lib/commands.js';
