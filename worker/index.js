@@ -6,7 +6,9 @@ import { parseFree, MENU } from '../extension/lib/commands.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, rawEnv, ctx) {
+    // Secrets piped into `wrangler secret put` can carry a trailing newline.
+    const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
     const url = new URL(request.url);
     // Telegram signs every webhook call with the secret given in setWebhook; ignore anything else.
     const authorized = request.headers.get('x-telegram-bot-api-secret-token') === env.WEBHOOK_SECRET

@@ -53,7 +53,30 @@ Prom — раз на годину                  OLX б/в і Allo — раз 
 
 Для тих, хто любить команди: `/add`, `/list`, `/del 2`, `/help`.
 
-Бот відповідає протягом ~30 хвилин (так часто GitHub запускає перевірку; у публічному репозиторії можна поставити `*/15` у `.github/workflows/check.yml`).
+Без Worker бот відповідає протягом ~30 хвилин (так часто GitHub запускає перевірку). Щоб відповідав миттєво, налаштуй Worker нижче.
+
+### Миттєві відповіді (Cloudflare Worker, безкоштовно)
+
+Worker приймає повідомлення одразу, відповідає за секунду і запускає хмарну перевірку на GitHub, тому перші результати приходять за 1–2 хвилини.
+
+1. Зареєструйся на [cloudflare.com](https://dash.cloudflare.com/sign-up).
+2. У `worker/wrangler.toml` вкажи свій репозиторій у `GITHUB_REPO`.
+3. У папці `worker`:
+   ```bash
+   npx wrangler@4.151.3 login
+   npx wrangler@4.151.3 deploy
+   npx wrangler@4.151.3 secret put TELEGRAM_BOT_TOKEN
+   npx wrangler@4.151.3 secret put TELEGRAM_CHAT_ID
+   npx wrangler@4.151.3 secret put WEBHOOK_SECRET
+   ```
+   `WEBHOOK_SECRET` — будь-який довгий випадковий рядок.
+4. Необов'язково: [GitHub-токен](https://github.com/settings/personal-access-tokens/new) лише на свій репозиторій з правом **Actions: Read and write** → `npx wrangler@4.151.3 secret put GITHUB_TOKEN`. Без нього результати прийдуть з найближчим запуском (до 30 хв).
+5. Підключи бота до Worker (адреса з кроку `deploy`):
+   ```bash
+   curl -X POST -H "x-setup-key: <WEBHOOK_SECRET>" https://bazarnyk.<твій-субдомен>.workers.dev/setup
+   ```
+
+На Windows у PowerShell пиши `npx.cmd` замість `npx`.
 
 ### Для родини чи друзів
 Додай бота в групу й зроби його адміністратором (потрібно для закріпленого повідомлення). Як `TELEGRAM_CHAT_ID` використай id групи: напиши `/start` у групі, поки секрет не заданий.
