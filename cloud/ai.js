@@ -19,8 +19,8 @@ const PROMPT =
 export const AI_VERSION = 3;
 
 // Claude subscription: Claude Code in print mode, authenticated by CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`.
-async function askClaude(query) {
-  const args = ['-y', '@anthropic-ai/claude-code@2.1.302', '-p', query, '--system-prompt', PROMPT, '--model', 'haiku', '--tools', '', '--output-format', 'text'];
+async function askClaude(query, system) {
+  const args = ['-y', '@anthropic-ai/claude-code@2.1.302', '-p', query, '--system-prompt', system, '--model', 'haiku', '--tools', '', '--output-format', 'text'];
   const { stdout } = await promisify(execFile)('npx', args, { timeout: 180_000 });
   return stdout;
 }
@@ -32,7 +32,7 @@ const defaults = (apiKey) =>
     : { baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' };
 
 // Any OpenAI-compatible API: DeepSeek, OpenRouter, Groq, Gemini.
-async function askApi(query, { apiKey, baseUrl = defaults(apiKey).baseUrl, model = defaults(apiKey).model }) {
+async function askApi(query, system, { apiKey, baseUrl = defaults(apiKey).baseUrl, model = defaults(apiKey).model }) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
@@ -40,7 +40,7 @@ async function askApi(query, { apiKey, baseUrl = defaults(apiKey).baseUrl, model
       model,
       temperature: 0,
       messages: [
-        { role: 'system', content: PROMPT },
+        { role: 'system', content: system },
         { role: 'user', content: query },
       ],
     }),
@@ -49,8 +49,32 @@ async function askApi(query, { apiKey, baseUrl = defaults(apiKey).baseUrl, model
   return (await res.json()).choices[0].message.content;
 }
 
+const ask = (text, system, ai) => (ai.claude ? askClaude(text, system) : askApi(text, system, ai));
+
 export async function suggestExcludes(query, ai) {
-  return parseWords(ai.claude ? await askClaude(query) : await askApi(query, ai), query);
+  return parseWords(await ask(query, PROMPT, ai), query);
+}
+
+const REQUEST_PROMPT =
+  'Користувач пише боту, який шукає товари на OLX і в інтернет-магазинах. Витягни з повідомлення, що шукати, ' +
+  'і максимальну ціну в гривнях. Відповідай лише одним рядком JSON без пояснень: ' +
+  '{"q": "коротка назва товару для пошуку, з брендом і моделлю, якщо вони є", "max": число або null}. ' +
+  'Пиши назву так, як її пишуть в оголошеннях (бренди й моделі латиницею: iPhone, Bosch, Hailo), ' +
+  'без слів про стан (б/у, новий, вживаний), бо б/в оголошення бот і так знаходить. ' +
+  'Приклади: «пошукай мені драбину хайло до трьох тисяч» -> {"q": "драбина Hailo", "max": 3000}; ' +
+  '«потрібен б/у перфоратор бош» -> {"q": "перфоратор Bosch", "max": null}; ' +
+  '«айфон 13 до 12к» -> {"q": "iPhone 13", "max": 12000}. ' +
+  'Якщо в повідомленні немає товару для пошуку, відповідай {"q": null}.';
+
+// "пошукай мені драбину хайло до трьох тисяч" -> { q: 'драбина Hailo', max: 3000 }, or null if it is not a search.
+export async function parseRequest(text, ai) {
+  return parseRequestReply(await ask(text, REQUEST_PROMPT, ai));
+}
+
+export function parseRequestReply(reply) {
+  const json = JSON.parse(reply.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+  const q = typeof json.q === 'string' ? json.q.trim() : '';
+  return q ? { q, max: Number(json.max) > 0 ? Math.round(Number(json.max)) : null } : null;
 }
 
 // Never exclude a form of a word the user is searching for ("драбинка" would hide every "драбина").

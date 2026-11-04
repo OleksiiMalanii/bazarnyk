@@ -1,11 +1,11 @@
 // Cloud job (GitHub Actions, every 30 min): answers bot commands and checks shops hourly.
 import { telegram, formatList } from '../extension/lib/telegram.js';
 import { loadState, saveState } from '../extension/lib/state.js';
-import { handleCommand } from '../extension/lib/commands.js';
+import { handleCommand, addSearch, parseFree, listButtons, KEYBOARD, MENU } from '../extension/lib/commands.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
 import { escape } from '../extension/lib/html.js';
-import { suggestExcludes, AI_VERSION } from './ai.js';
+import { suggestExcludes, parseRequest, AI_VERSION } from './ai.js';
 
 // Allo blocks GitHub servers (403), so the extension checks it instead.
 const SHOPS = { Prom: prom };
@@ -15,7 +15,7 @@ const { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId } = process.env;
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
 const tg = telegram(token);
 
-const updates = await tg('getUpdates', { timeout: 0, allowed_updates: ['message'] });
+const updates = await tg('getUpdates', { timeout: 0, allowed_updates: ['message', 'callback_query'] });
 const confirm = () => updates.length && tg('getUpdates', { offset: updates.at(-1).update_id + 1, timeout: 0 });
 
 // Setup mode: tell whoever writes to the bot their chat id, so it can be saved as a secret.
@@ -30,17 +30,44 @@ if (!chatId) {
 const state = await loadState(tg, chatId);
 let changed = false;
 
-for (const { message: m } of updates) {
+const ai = { claude: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
+const hasAi = ai.claude || Boolean(ai.apiKey);
+const reply = (text, markup = KEYBOARD) =>
+  tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: markup });
+
+if (updates.length) await tg('setMyCommands', { commands: MENU });
+
+for (const { message: m, callback_query: cb } of updates) {
+  // "🗑" button under the search list
+  if (cb) {
+    if (String(cb.message?.chat.id) !== String(chatId)) continue;
+    const n = state.data.searches.findIndex((s) => `del:${s.id}` === cb.data) + 1;
+    const text = handleCommand(`/del ${n}`, state.data);
+    await tg('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {}); // fails if older than ~15 min; harmless
+    await reply(text);
+    changed = true;
+    continue;
+  }
   if (!m?.text || String(m.chat.id) !== String(chatId)) continue; // ignore strangers
-  const reply = handleCommand(m.text, state.data);
-  if (reply === null) continue;
-  await tg('sendMessage', { chat_id: chatId, text: reply, parse_mode: 'HTML', disable_web_page_preview: true });
+  let text = handleCommand(m.text, state.data);
+  if (text === null) {
+    // Free text: "пошукай мені драбину до 3000". AI understands it; without AI, a simple parser does.
+    let s = null;
+    try {
+      s = hasAi ? await parseRequest(m.text, ai) : parseFree(m.text);
+    } catch (e) {
+      console.error(`AI request parsing failed: ${e.message}`);
+      s = parseFree(m.text);
+    }
+    text = s ? addSearch(state.data, s) : 'Не зрозумів, що шукати 🙂 Напиши, наприклад: драбина Hailo до 3000';
+  }
+  const isList = state.data.searches.length && /^(\/list|📋)/.test(m.text.trim());
+  await reply(text, isList ? listButtons(state.data) : KEYBOARD);
   changed = true;
 }
 
 // AI filter: once per search, ask for words that mark irrelevant listings (toys, books, scrap...).
-const ai = { claude: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
-for (const s of ai.claude || ai.apiKey ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) : []) {
+for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) : []) {
   try {
     s.not = await suggestExcludes(s.q, ai);
     s.aiV = AI_VERSION;

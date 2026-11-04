@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { matchesQuery, pick, siteQuery } from '../extension/lib/match.js';
-import { parseAdd, handleCommand } from '../extension/lib/commands.js';
+import { parseAdd, parseFree, handleCommand, listButtons, BUTTONS } from '../extension/lib/commands.js';
 import { parseOlx } from '../extension/lib/olx.js';
 import { parseProm } from '../extension/lib/prom.js';
 import { parseAllo } from '../extension/lib/allo.js';
@@ -28,14 +28,15 @@ test('parseAdd reads query and optional max price', () => {
   assert.deepEqual(parseAdd('драбина Hailo до 3 000'), { q: 'драбина Hailo', max: 3000 });
   assert.deepEqual(parseAdd('драбина'), { q: 'драбина', max: null });
   assert.equal(parseAdd('  '), null);
+  assert.deepEqual(parseAdd('велосипед до 5 тис грн'), { q: 'велосипед', max: 5000 });
 });
 
 test('handleCommand add/list/del', () => {
   const data = { searches: [], nextId: 1 };
-  assert.match(handleCommand('/add@bazarnyk_bot драбина до 2000', data), /Додано №1/);
+  assert.match(handleCommand('/add@bazarnyk_bot драбина до 2000', data), /Шукаю: <b>драбина<\/b> до 2000 грн/);
   assert.deepEqual(data.searches[0], { id: 1, q: 'драбина', max: 2000, best: null });
   assert.match(handleCommand('/list', data), /1\. драбина \(до 2000 грн\)/);
-  assert.match(handleCommand('/del 5', data), /Немає пошуку/);
+  assert.match(handleCommand('/del 5', data), /вже немає/);
   assert.match(handleCommand('/del 1', data), /Видалено/);
   assert.equal(data.searches.length, 0);
   assert.equal(handleCommand('привіт', data), null);
@@ -123,4 +124,25 @@ test('parseWords never excludes forms of the searched words', async () => {
   // Real Haiku answer with a preamble: no sentence words, no "для".
   const real = 'Ось слова, які зустрічаються в назвах нерелевантних оголошень за запитом: іграшкова, для ляльок, шведська стінка, брелок';
   assert.deepEqual(parseWords(real, 'драбина'), ['іграшкова', 'ляльок', 'шведська', 'стінка', 'брелок']);
+});
+
+test('buttons map to commands, list has delete buttons', () => {
+  const data = { searches: [], nextId: 1 };
+  assert.match(handleCommand(BUTTONS.add, data), /Напиши, що шукаєш/);
+  handleCommand('/add драбина', data);
+  assert.match(handleCommand(BUTTONS.list, data), /1\. драбина/);
+  assert.deepEqual(listButtons(data).inline_keyboard, [[{ text: '🗑 1. драбина', callback_data: 'del:1' }]]);
+  assert.equal(handleCommand('пошукай драбину', data), null); // free text is handled by the caller
+});
+
+test('parseFree strips request words without AI', () => {
+  assert.deepEqual(parseFree('Пошукай мені драбину Hailo до 3000 грн'), { q: 'драбину Hailo', max: 3000 });
+  assert.deepEqual(parseFree('потрібен перфоратор'), { q: 'перфоратор', max: null });
+});
+
+test('parseRequestReply reads the AI JSON answer', async () => {
+  const { parseRequestReply } = await import('../cloud/ai.js');
+  assert.deepEqual(parseRequestReply('{"q": "драбина Hailo", "max": 3000}'), { q: 'драбина Hailo', max: 3000 });
+  assert.deepEqual(parseRequestReply('Ось: {"q": "перфоратор Bosch", "max": null}'), { q: 'перфоратор Bosch', max: null });
+  assert.equal(parseRequestReply('{"q": null}'), null);
 });
