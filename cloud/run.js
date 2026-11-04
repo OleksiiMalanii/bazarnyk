@@ -39,8 +39,8 @@ for (const { message: m } of updates) {
 }
 
 // AI filter: once per search, ask for words that mark irrelevant listings (toys, books, scrap...).
-const ai = { apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
-for (const s of ai.apiKey ? state.data.searches.filter((s) => !s.not) : []) {
+const ai = { claude: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
+for (const s of ai.claude || ai.apiKey ? state.data.searches.filter((s) => !s.not) : []) {
   try {
     s.not = await suggestExcludes(s.q, ai);
   } catch (e) {
