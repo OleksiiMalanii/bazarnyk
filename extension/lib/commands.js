@@ -43,6 +43,8 @@ export const parseFree = (text) =>
 
 export function addSearch(data, s) {
   data.searches.push({ id: data.nextId++, ...s, best: null });
+  // s.raw: free text the Worker could not parse with AI; the cloud job refines it shortly.
+  if (s.raw) return `✅ Прийняв: «${escape(s.raw)}»\nЗараз уточню, що саме шукати, і почну пошук.`;
   return `✅ Шукаю: <b>${escape(s.q)}</b>${s.max ? ` до ${s.max} грн` : ''}\nНапишу, щойно знайду щось підходяще (зазвичай протягом години).`;
 }
 

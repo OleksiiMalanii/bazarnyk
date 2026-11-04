@@ -12,6 +12,17 @@ export async function loadState(tg, chatId) {
   return { messageId: chat.pinned_message.message_id, data: JSON.parse(text.slice(HEADER.length)) };
 }
 
+// Webhook mode: the Worker may add or delete searches while the cloud job runs. Re-read the list and apply
+// only the job's per-search updates, so those changes are not overwritten.
+// shortcut: a Worker write landing between this read and the save is still lost; fine at a few writes per hour.
+export async function saveMerged(tg, chatId, state) {
+  const fresh = await loadState(tg, chatId);
+  const mine = new Map(state.data.searches.map((s) => [s.id, s]));
+  fresh.data.searches = fresh.data.searches.map((s) => mine.get(s.id) ?? s);
+  Object.assign(state, fresh);
+  await saveState(tg, chatId, state);
+}
+
 export async function saveState(tg, chatId, state) {
   const text = HEADER + JSON.stringify(state.data);
   if (text.length > 4096) throw new Error('Забагато пошуків: видаліть кілька через /del');

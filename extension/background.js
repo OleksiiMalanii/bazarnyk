@@ -31,7 +31,8 @@ async function check() {
   const errors = [];
   let sent = 0;
 
-  for (const s of data.searches) {
+  // s.raw: free text the cloud job has not turned into a proper query yet
+  for (const s of data.searches.filter((s) => !s.raw)) {
     // Allo blocks GitHub servers, so it is checked here like a shop: notify only on a new lowest price.
     try {
       const items = pick(await allo(siteQuery(s.q)), s);

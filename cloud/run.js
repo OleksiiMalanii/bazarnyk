@@ -1,7 +1,9 @@
-// Cloud job (GitHub Actions, every 30 min): answers bot commands and checks shops hourly.
+// Cloud job (GitHub Actions, every 30 min): answers bot commands (unless the Worker does), runs the AI steps
+// and checks shops hourly.
 import { telegram, formatList } from '../extension/lib/telegram.js';
-import { loadState, saveState } from '../extension/lib/state.js';
-import { handleCommand, addSearch, parseFree, listButtons, KEYBOARD, MENU } from '../extension/lib/commands.js';
+import { loadState, saveState, saveMerged } from '../extension/lib/state.js';
+import { parseFree, MENU } from '../extension/lib/commands.js';
+import { handleUpdate } from '../extension/lib/bot.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
 import { escape } from '../extension/lib/html.js';
@@ -15,8 +17,17 @@ const { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId } = process.env;
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
 const tg = telegram(token);
 
-const updates = await tg('getUpdates', { timeout: 0, allowed_updates: ['message', 'callback_query'] });
+// With the Worker's webhook set, Telegram refuses getUpdates: the Worker answers messages instantly instead.
+let updates = [];
+let webhook = false;
+try {
+  updates = await tg('getUpdates', { timeout: 0, allowed_updates: ['message', 'callback_query'] });
+} catch (e) {
+  if (!e.message.includes('webhook')) throw e;
+  webhook = true;
+}
 const confirm = () => updates.length && tg('getUpdates', { offset: updates.at(-1).update_id + 1, timeout: 0 });
+const save = (state) => (webhook ? saveMerged : saveState)(tg, chatId, state);
 
 // Setup mode: tell whoever writes to the bot their chat id, so it can be saved as a secret.
 if (!chatId) {
@@ -32,37 +43,38 @@ let changed = false;
 
 const ai = { claude: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
 const hasAi = ai.claude || Boolean(ai.apiKey);
-const reply = (text, markup = KEYBOARD) =>
-  tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true, reply_markup: markup });
+
+// Free text: "пошукай мені драбину до 3000". AI understands it; without AI, a simple parser does.
+async function parse(text) {
+  if (!hasAi) return parseFree(text);
+  try {
+    return await parseRequest(text, ai);
+  } catch (e) {
+    console.error(`AI request parsing failed: ${e.message}`);
+    return parseFree(text);
+  }
+}
 
 if (updates.length) await tg('setMyCommands', { commands: MENU });
+for (const u of updates) {
+  if (await handleUpdate(u, { tg, chatId, data: state.data, parse })) changed = true;
+}
 
-for (const { message: m, callback_query: cb } of updates) {
-  // "🗑" button under the search list
-  if (cb) {
-    if (String(cb.message?.chat.id) !== String(chatId)) continue;
-    const n = state.data.searches.findIndex((s) => `del:${s.id}` === cb.data) + 1;
-    const text = handleCommand(`/del ${n}`, state.data);
-    await tg('answerCallbackQuery', { callback_query_id: cb.id }).catch(() => {}); // fails if older than ~15 min; harmless
-    await reply(text);
-    changed = true;
-    continue;
-  }
-  if (!m?.text || String(m.chat.id) !== String(chatId)) continue; // ignore strangers
-  let text = handleCommand(m.text, state.data);
-  if (text === null) {
-    // Free text: "пошукай мені драбину до 3000". AI understands it; without AI, a simple parser does.
-    let s = null;
+// Searches the Worker added from free text: let AI work out what is actually wanted.
+for (const s of state.data.searches.filter((s) => s.raw)) {
+  if (hasAi) {
     try {
-      s = hasAi ? await parseRequest(m.text, ai) : parseFree(m.text);
+      const r = await parseRequest(s.raw, ai);
+      if (r) {
+        Object.assign(s, r, { aiV: null, best: null });
+        await tg('sendMessage', { chat_id: chatId, text: `🤖 Зрозумів так: шукаю <b>${escape(s.q)}</b>${s.max ? ` до ${s.max} грн` : ''}`, parse_mode: 'HTML' });
+      }
     } catch (e) {
-      console.error(`AI request parsing failed: ${e.message}`);
-      s = parseFree(m.text);
+      console.error(`AI request parsing failed: ${e.message}`); // retried on the next run
+      continue;
     }
-    text = s ? addSearch(state.data, s) : 'Не зрозумів, що шукати 🙂 Напиши, наприклад: драбина Hailo до 3000';
   }
-  const isList = state.data.searches.length && /^(\/list|📋)/.test(m.text.trim());
-  await reply(text, isList ? listButtons(state.data) : KEYBOARD);
+  delete s.raw;
   changed = true;
 }
 
@@ -82,13 +94,13 @@ for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) 
   changed = true;
 }
 // Save before confirming, so a crash re-processes commands instead of losing them.
-if (changed) await saveState(tg, chatId, state);
+if (changed) await save(state);
 await confirm();
 
 const force = process.argv.includes('--now');
 let failures = 0;
 let attempts = 0;
-for (const s of state.data.searches) {
+for (const s of state.data.searches.filter((s) => !s.raw)) {
   if (!force && s.checkedAt && Date.now() - s.checkedAt < CHECK_EVERY_MS) continue;
   const results = await Promise.allSettled(Object.values(SHOPS).map((f) => f(siteQuery(s.q))));
   results.forEach((r, i) => {
@@ -109,7 +121,7 @@ for (const s of state.data.searches) {
   s.checkedAt = Date.now();
   changed = true;
 }
-if (changed) await saveState(tg, chatId, state);
+if (changed) await save(state);
 
 // Every shop request failed: fail the workflow so GitHub emails the owner.
 if (attempts && failures === attempts) process.exitCode = 1;

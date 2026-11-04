@@ -156,3 +156,35 @@ test('min price floor drops accessories and never exceeds half the budget', asyn
   const items = [{ title: 'Чохол iPhone 13', price: 25 }, { title: 'iPhone 13 128GB', price: 11000 }];
   assert.deepEqual(pick(items, { q: 'iPhone 13', min: 3600 }).map((i) => i.price), [11000]);
 });
+
+test('handleUpdate: free text, delete button, strangers', async () => {
+  const { handleUpdate } = await import('../extension/lib/bot.js');
+  const sent = [];
+  const tg = async (method, body) => (method === 'sendMessage' && sent.push(body.text), true);
+  const data = { searches: [], nextId: 1 };
+  const ctx = { tg, chatId: 7, data, parse: async (t) => ({ q: t.replace('пошукай ', ''), max: null, raw: t }) };
+
+  assert.equal(await handleUpdate({ message: { chat: { id: 9 }, text: 'пошукай драбину' } }, ctx), false);
+  assert.equal(await handleUpdate({ message: { chat: { id: 7 }, text: 'пошукай драбину' } }, ctx), true);
+  assert.equal(data.searches[0].q, 'драбину');
+  assert.match(sent.at(-1), /Прийняв: «пошукай драбину»/);
+
+  await handleUpdate({ callback_query: { id: 'x', data: 'del:1', message: { chat: { id: 7 } } } }, ctx);
+  assert.equal(data.searches.length, 0);
+  assert.match(sent.at(-1), /Видалено/);
+});
+
+test('saveMerged keeps searches the Worker added or deleted meanwhile', async () => {
+  const { saveMerged, HEADER } = await import('../extension/lib/state.js');
+  // Pinned list now: search 1 deleted by the Worker, search 3 added by it.
+  let pinned = { message_id: 5, text: HEADER + JSON.stringify({ searches: [{ id: 2, q: 'b' }, { id: 3, q: 'c' }], nextId: 4 }) };
+  const tg = async (method, body) => {
+    if (method === 'getChat') return { pinned_message: pinned };
+    if (method === 'editMessageText') pinned = { ...pinned, text: body.text };
+    return true;
+  };
+  // The job's view: started with 1 and 2, updated both.
+  const state = { messageId: 5, data: { searches: [{ id: 1, q: 'a', best: 1 }, { id: 2, q: 'b', best: 2 }], nextId: 3 } };
+  await saveMerged(tg, 7, state);
+  assert.deepEqual(JSON.parse(pinned.text.slice(HEADER.length)), { searches: [{ id: 2, q: 'b', best: 2 }, { id: 3, q: 'c' }], nextId: 4 });
+});

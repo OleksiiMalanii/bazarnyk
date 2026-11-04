@@ -1,0 +1,8 @@
+name = "bazarnyk"
+main = "index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+GITHUB_REPO = "OleksiiMalanii/bazarnyk"
+
+# Secrets (wrangler secret put …): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WEBHOOK_SECRET, GITHUB_TOKEN (optional)
