@@ -60,9 +60,9 @@ Prom — раз на годину                  OLX б/в і Allo — раз 
 
 ШІ викликається один раз на пошук, а не при кожній перевірці. Тому навіть платний DeepSeek коштуватиме копійки, а підійде і безкоштовний тариф будь-якого сервісу з OpenAI-сумісним API.
 
-1. Отримай ключ на [platform.deepseek.com](https://platform.deepseek.com) (або в OpenRouter, Groq, Google AI Studio).
+1. Отримай ключ на [openrouter.ai](https://openrouter.ai/keys) (безкоштовні моделі) або [platform.deepseek.com](https://platform.deepseek.com). Сервіс визначається за ключем сам.
 2. Додай секрет `AI_API_KEY`.
-3. Для іншого сервісу додай у **Settings → Secrets and variables → Actions → Variables**:
+3. Для іншого сервісу (Groq, Google AI Studio) додай у **Settings → Secrets and variables → Actions → Variables**:
    `AI_BASE_URL` (напр. `https://openrouter.ai/api/v1`) і `AI_MODEL` (назва моделі в цьому сервісі).
 
 Без ключа все працює, тільки без ШІ-фільтра.

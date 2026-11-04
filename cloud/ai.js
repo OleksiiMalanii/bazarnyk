@@ -8,7 +8,13 @@ const PROMPT =
   'сировина, інші товари з тим самим словом), але НЕ бувають у назвах потрібного товару. ' +
   'Пиши українською, і якщо буває, ще російською. Лише слова через кому, без пояснень.';
 
-export async function suggestExcludes(query, { apiKey, baseUrl = 'https://api.deepseek.com', model = 'deepseek-chat' }) {
+// OpenRouter keys start with "sk-or-"; "openrouter/free" routes to whichever free model is available.
+const defaults = (apiKey) =>
+  apiKey.startsWith('sk-or-')
+    ? { baseUrl: 'https://openrouter.ai/api/v1', model: 'openrouter/free' }
+    : { baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' };
+
+export async function suggestExcludes(query, { apiKey, baseUrl = defaults(apiKey).baseUrl, model = defaults(apiKey).model }) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
