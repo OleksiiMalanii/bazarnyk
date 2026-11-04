@@ -48,9 +48,11 @@ async function check() {
     const first = !seen[s.id];
     // First run: the cheapest offers; afterwards: the newest, to catch fresh listings.
     const items = pick(await olx(siteQuery(s.q), s.max, first ? 'filter_float_price:asc' : 'created_at:desc'), s);
+    // Also mark the newest listings seen on the first run, or the next run reports them all as new.
+    const newest = first ? pick(await olx(siteQuery(s.q), s.max, 'created_at:desc'), s) : [];
     const known = new Set(seen[s.id] ?? []);
     const fresh = first ? items.slice(0, 3) : items.filter((i) => !known.has(i.id)).slice(0, 5);
-    seen[s.id] = [...new Set([...items.map((i) => i.id), ...known])].slice(0, 500);
+    seen[s.id] = [...new Set([...items, ...newest].map((i) => i.id).concat([...known]))].slice(0, 500);
     if (!fresh.length) continue;
 
     const title = first ? `🔎 OLX б/в: найдешевше зараз — «${s.q}»` : `🆕 OLX б/в: нові оголошення — «${s.q}»`;
