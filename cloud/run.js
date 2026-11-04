@@ -5,7 +5,7 @@ import { handleCommand } from '../extension/lib/commands.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
 import { escape } from '../extension/lib/html.js';
-import { suggestExcludes } from './ai.js';
+import { suggestExcludes, AI_VERSION } from './ai.js';
 
 // Allo blocks GitHub servers (403), so the extension checks it instead.
 const SHOPS = { Prom: prom };
@@ -40,9 +40,10 @@ for (const { message: m } of updates) {
 
 // AI filter: once per search, ask for words that mark irrelevant listings (toys, books, scrap...).
 const ai = { claude: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
-for (const s of ai.claude || ai.apiKey ? state.data.searches.filter((s) => !s.not) : []) {
+for (const s of ai.claude || ai.apiKey ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) : []) {
   try {
     s.not = await suggestExcludes(s.q, ai);
+    s.aiV = AI_VERSION;
   } catch (e) {
     console.error(`AI failed for "${s.q}": ${e.message}`); // retried on the next run
     continue;

@@ -7,7 +7,11 @@ const PROMPT =
   'Користувач шукає товар на OLX і в інтернет-магазинах. Напиши 10–20 коротких слів через кому, ' +
   'які часто бувають у НАЗВАХ нерелевантних оголошень за цим запитом (іграшки, книги, запчастини, ' +
   'сировина, інші товари з тим самим словом), але НЕ бувають у назвах потрібного товару. ' +
-  'Пиши українською, і якщо буває, ще російською. Лише слова через кому, без пояснень.';
+  'Лише іменники та прикметники, без службових слів (для, з, на). Пиши українською, і якщо буває, ще російською. ' +
+  'Почни відповідь одразу з першого слова: лише слова через кому, без вступу й пояснень.';
+
+// Bump when the prompt or parsing changes: searches get their exclusions regenerated.
+export const AI_VERSION = 2;
 
 // Claude subscription: Claude Code in print mode, authenticated by CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`.
 async function askClaude(query) {
@@ -47,7 +51,10 @@ export async function suggestExcludes(query, ai) {
 // Never exclude a form of a word the user is searching for ("драбинка" would hide every "драбина").
 export function parseWords(text, query) {
   const wanted = query.toLowerCase().split(/\s+/).filter((w) => w && !w.startsWith('-'));
-  const words = text.toLowerCase().match(/[\p{L}\d'ʼ-]{3,}/gu) ?? [];
+  // Skip a preamble like "Ось слова…:" and any list item longer than two words (a sentence, not a keyword).
+  const items = text.toLowerCase().split(':').pop().split(/[,\n]/).map((i) => i.trim().split(/\s+/)).filter((i) => i.length <= 2);
+  // 4+ letters drops prepositions like "для", which would hide most real listings.
+  const words = items.flat().map((w) => w.replace(/[^\p{L}\d'ʼ-]/gu, '')).filter((w) => w.length >= 4);
   return [...new Set(words)]
     .filter((w) => !wanted.some((q) => q.includes(stem(w)) || w.includes(stem(q))))
     .slice(0, 25);

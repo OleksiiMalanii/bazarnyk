@@ -120,4 +120,7 @@ test('pick drops titles with AI-excluded words', () => {
 test('parseWords never excludes forms of the searched words', async () => {
   const { parseWords } = await import('../cloud/ai.js');
   assert.deepEqual(parseWords('Книга, драбинка, LEGO, іграшка, ok', 'драбина Hailo'), ['книга', 'lego', 'іграшка']);
+  // Real Haiku answer with a preamble: no sentence words, no "для".
+  const real = 'Ось слова, які зустрічаються в назвах нерелевантних оголошень за запитом: іграшкова, для ляльок, шведська стінка, брелок';
+  assert.deepEqual(parseWords(real, 'драбина'), ['іграшкова', 'ляльок', 'шведська', 'стінка', 'брелок']);
 });
