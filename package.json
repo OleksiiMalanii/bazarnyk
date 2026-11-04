@@ -1,0 +1,16 @@
+{
+  "name": "bazarnyk",
+  "version": "0.1.0",
+  "description": "Шукає найдешевші б/в товари на OLX і в магазинах та надсилає сповіщення в Telegram",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node cloud/run.js",
+    "smoke": "node scripts/smoke.js"
+  }
+}
