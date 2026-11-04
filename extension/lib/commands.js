@@ -7,7 +7,7 @@ export const HELP = [
   '/list — список пошуків',
   '/del 2 — видалити пошук №2',
   '',
-  'OLX (б/в) перевіряє розширення Chrome, магазини (Prom, Allo) — хмара раз на годину.',
+  'OLX (б/в) і Allo перевіряє розширення Chrome, Prom — хмара раз на годину.',
 ].join('\n');
 
 export function parseAdd(args) {

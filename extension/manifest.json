@@ -2,9 +2,9 @@
   "manifest_version": 3,
   "name": "Bazarnyk",
   "version": "0.1.0",
-  "description": "Щогодини шукає б/в товари на OLX за списком із Telegram-бота і надсилає нові оголошення в Telegram.",
+  "description": "Щогодини шукає б/в товари на OLX і ціни на Allo за списком із Telegram-бота і надсилає нові оголошення в Telegram.",
   "permissions": ["alarms", "storage"],
-  "host_permissions": ["https://www.olx.ua/*", "https://api.telegram.org/*"],
+  "host_permissions": ["https://www.olx.ua/*", "https://allo.ua/*", "https://api.telegram.org/*"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": { "default_popup": "options.html" },
   "options_page": "options.html"

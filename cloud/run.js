@@ -4,9 +4,9 @@ import { loadState, saveState } from '../extension/lib/state.js';
 import { handleCommand } from '../extension/lib/commands.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
-import { allo } from '../extension/lib/allo.js';
 
-const SHOPS = { Prom: prom, Allo: allo };
+// Allo blocks GitHub servers (403), so the extension checks it instead.
+const SHOPS = { Prom: prom };
 const CHECK_EVERY_MS = 55 * 60 * 1000;
 
 const { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId } = process.env;
