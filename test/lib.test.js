@@ -107,3 +107,17 @@ test('state round-trips through a pinned message', async () => {
   assert.deepEqual(calls, ['getChat', 'sendMessage', 'pinChatMessage', 'getChat', 'editMessageText']);
   assert.equal(JSON.parse(pinned.text.slice(HEADER.length)).nextId, 2);
 });
+
+test('pick drops titles with AI-excluded words', () => {
+  const items = [
+    { title: 'Драбина алюмінієва', price: 900 },
+    { title: 'Книга «Драбина»', price: 200 },
+    { title: 'LEGO пожежна машина з драбиною', price: 700 },
+  ];
+  assert.deepEqual(pick(items, { q: 'драбина', not: ['книга', 'lego'] }).map((i) => i.price), [900]);
+});
+
+test('parseWords never excludes forms of the searched words', async () => {
+  const { parseWords } = await import('../cloud/ai.js');
+  assert.deepEqual(parseWords('Книга, драбинка, LEGO, іграшка, ok', 'драбина Hailo'), ['книга', 'lego', 'іграшка']);
+});

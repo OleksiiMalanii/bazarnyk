@@ -1,7 +1,7 @@
 // Item shape shared by all sources: { site, id, title, price, url, photo? }
 
 // shortcut: crude stemming (drop 2 last letters) so "драбина" matches "драбину"; replace with an AI filter if too loose
-const stem = (w) => (w.length > 4 ? w.slice(0, -2) : w);
+export const stem = (w) => (w.length > 4 ? w.slice(0, -2) : w);
 
 export function matchesQuery(title, query) {
   const t = title.toLowerCase();
@@ -15,5 +15,7 @@ export const siteQuery = (query) => query.split(/\s+/).filter((w) => !w.startsWi
 export function pick(items, search) {
   return items
     .filter((i) => i.price > 0 && (!search.max || i.price <= search.max) && matchesQuery(i.title, search.q))
+    // search.not: AI-suggested words that mark irrelevant listings
+    .filter((i) => !(search.not ?? []).some((w) => i.title.toLowerCase().includes(stem(w))))
     .sort((a, b) => a.price - b.price);
 }

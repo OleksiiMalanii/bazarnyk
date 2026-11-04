@@ -4,6 +4,8 @@ import { loadState, saveState } from '../extension/lib/state.js';
 import { handleCommand } from '../extension/lib/commands.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { prom } from '../extension/lib/prom.js';
+import { escape } from '../extension/lib/html.js';
+import { suggestExcludes } from './ai.js';
 
 // Allo blocks GitHub servers (403), so the extension checks it instead.
 const SHOPS = { Prom: prom };
@@ -33,6 +35,20 @@ for (const { message: m } of updates) {
   const reply = handleCommand(m.text, state.data);
   if (reply === null) continue;
   await tg('sendMessage', { chat_id: chatId, text: reply, parse_mode: 'HTML', disable_web_page_preview: true });
+  changed = true;
+}
+
+// AI filter: once per search, ask for words that mark irrelevant listings (toys, books, scrap...).
+const ai = { apiKey: process.env.AI_API_KEY, baseUrl: process.env.AI_BASE_URL || undefined, model: process.env.AI_MODEL || undefined };
+for (const s of ai.apiKey ? state.data.searches.filter((s) => !s.not) : []) {
+  try {
+    s.not = await suggestExcludes(s.q, ai);
+  } catch (e) {
+    console.error(`AI failed for "${s.q}": ${e.message}`); // retried on the next run
+    continue;
+  }
+  s.best = null; // shop best may have been junk; re-evaluate with the new filter
+  await tg('sendMessage', { chat_id: chatId, text: `🤖 «${escape(s.q)}»: відкидатиму оголошення зі словами: ${escape(s.not.join(', '))}`, parse_mode: 'HTML' });
   changed = true;
 }
 // Save before confirming, so a crash re-processes commands instead of losing them.
