@@ -2,7 +2,8 @@
 // It only edits the search list; the cloud job (started right away via GitHub) runs AI and searches.
 import { telegram } from '../extension/lib/telegram.js';
 import { loadState, saveState } from '../extension/lib/state.js';
-import { parseFree, handleCommand, MENU } from '../extension/lib/commands.js';
+import { parseFree, handleCommand, addSearch, MENU } from '../extension/lib/commands.js';
+import { escape } from '../extension/lib/html.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 
 export default {
@@ -10,7 +11,7 @@ export default {
     // Secrets piped into `wrangler secret put` can carry a trailing newline.
     const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/ext/')) return extension(request, url, env);
+    if (url.pathname.startsWith('/ext/')) return extension(request, url, env, ctx);
     // Telegram signs every webhook call with the secret given in setWebhook; ignore anything else.
     const authorized = request.headers.get('x-telegram-bot-api-secret-token') === env.WEBHOOK_SECRET
       || request.headers.get('x-setup-key') === env.WEBHOOK_SECRET;
@@ -70,22 +71,39 @@ async function setup(tg, url, env) {
 
 // The browser extension talks to the bot only through here, so it never needs the bot token.
 // It authenticates with the key from "🧩 Підключити браузер" (stored in the pinned list).
-async function extension(request, url, env) {
+async function extension(request, url, env, ctx) {
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const tg = telegram(env.TELEGRAM_BOT_TOKEN);
   const state = await loadState(tg, env.TELEGRAM_CHAT_ID);
   const { data } = state;
   if (!data.extKey || request.headers.get('x-ext-key') !== data.extKey) return json({ error: 'Код не підходить. Натисни в боті «🧩 Підключити браузер» і встав новий код.' }, 403);
 
+  // Edits from the popup: save, echo to the chat so it stays the full history, return the new list.
+  const edited = async (text) => {
+    await saveState(tg, env.TELEGRAM_CHAT_ID, state);
+    if (text) await tg('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: `${text} (з браузера)`, parse_mode: 'HTML' });
+    return json({ ok: true, searches: data.searches });
+  };
   if (url.pathname === '/ext/delete' && request.method === 'POST') {
     const { id } = await request.json();
     const n = data.searches.findIndex((s) => s.id === id) + 1;
-    const text = handleCommand(`/del ${n}`, data);
-    if (n) {
-      await saveState(tg, env.TELEGRAM_CHAT_ID, state);
-      await tg('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: `${text} (з браузера)`, parse_mode: 'HTML' });
-    }
-    return json({ ok: true, searches: data.searches });
+    if (!n) return json({ ok: true, searches: data.searches });
+    return edited(handleCommand(`/del ${n}`, data));
+  }
+  if (url.pathname === '/ext/pause' && request.method === 'POST') {
+    const { id } = await request.json();
+    const s = data.searches.find((x) => x.id === id);
+    if (!s) return json({ ok: true, searches: data.searches });
+    s.paused = !s.paused;
+    return edited(`${s.paused ? '⏸ На паузі' : '▶️ Знову шукаю'}: «${escape(s.q)}»`);
+  }
+  if (url.pathname === '/ext/add' && request.method === 'POST') {
+    const text = String((await request.json()).text ?? '').trim().slice(0, 200);
+    const s = text && parseFree(text);
+    if (!s) return json({ error: 'Напиши, що шукаєш, наприклад: драбина до 3000' }, 400);
+    const res = await edited(addSearch(data, { ...s, raw: text })); // raw: the cloud job refines it with AI
+    if (env.GITHUB_TOKEN && env.GITHUB_REPO) ctx.waitUntil(dispatch(env));
+    return res;
   }
 
   if (url.pathname === '/ext/state' && request.method === 'GET') return json({ searches: data.searches, settings: data.settings ?? null });

@@ -16,6 +16,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   return true; // reply asynchronously
 });
 
+// Number on the toolbar icon: finds sent to Telegram since the popup was last opened.
+const showUnread = (n) => chrome.action.setBadgeText({ text: n ? String(n) : '' });
+chrome.action.setBadgeBackgroundColor({ color: '#1a7f37' });
+
 function report(e) {
   const status = `⚠️ ${e.message}`;
   chrome.storage.local.set({ status });
@@ -25,7 +29,7 @@ function report(e) {
 async function check(force) {
   const api = await workerApi();
   const data = await api.state();
-  const { seen = {}, shopBest = {}, checkedAt = {} } = await chrome.storage.local.get(['seen', 'shopBest', 'checkedAt']);
+  const { seen = {}, shopBest = {}, olxBest = {}, checkedAt = {} } = await chrome.storage.local.get(['seen', 'shopBest', 'olxBest', 'checkedAt']);
   const olxOn = settingsOf(data).sites.includes('olx');
   const shops = shopsFor(data, 'browser');
   const errors = [];
@@ -58,6 +62,9 @@ async function check(force) {
       const fresh = first ? listings.slice(0, 3) : listings.filter((i) => !known.has(i.id)).slice(0, 5);
       seen[s.id] = [...new Set([...listings, ...newest].map((i) => i.id).concat([...known]))].slice(0, 500);
       if (!fresh.length) continue;
+      // shortcut: the cheapest OLX listing we have sent; it may be sold since. Fine for a hint in the popup.
+      const cheap = fresh.reduce((a, b) => (b.price < a.price ? b : a));
+      if (!olxBest[s.id] || cheap.price < olxBest[s.id].price) olxBest[s.id] = { price: cheap.price, site: 'OLX', url: cheap.url };
 
       const title = first ? `🔎 OLX б/в: найдешевше зараз — «${s.q}»` : `🆕 OLX б/в: нові оголошення — «${s.q}»`;
       const shop = [s.best, shopBest[s.id]].filter(Boolean).sort((a, b) => a.price - b.price)[0];
@@ -74,6 +81,8 @@ async function check(force) {
   const status = searches.length
     ? `✅ ${new Date().toLocaleString('uk-UA')}: перевірено ${searches.length}, надіслано ${sent}` + (errors.length ? `\n⚠️ ${[...new Set(errors)].join('; ')}` : '')
     : (await chrome.storage.local.get('status')).status ?? '';
-  await chrome.storage.local.set({ seen: keep(seen), shopBest: keep(shopBest), checkedAt: keep(checkedAt), status, lastRun: Date.now() });
+  const unread = ((await chrome.storage.local.get('unread')).unread ?? 0) + sent; // re-read: the popup may have reset it meanwhile
+  await chrome.storage.local.set({ seen: keep(seen), shopBest: keep(shopBest), olxBest: keep(olxBest), checkedAt: keep(checkedAt), status, lastRun: Date.now(), unread });
+  showUnread(unread);
   return status || 'Усі пошуки вже перевірені, наступна перевірка за розкладом';
 }

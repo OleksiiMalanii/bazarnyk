@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bazarnyk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Шукає для твого Telegram-бота Bazarnyk б/в оголошення на OLX і ціни на Алло — сайтах, які не пускають сервери.",
   "permissions": ["alarms", "storage"],
   "host_permissions": ["https://www.olx.ua/*", "https://allo.ua/*", "https://*.workers.dev/*"],

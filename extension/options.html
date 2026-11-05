@@ -29,6 +29,11 @@
     #searches .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
     #searches .tag { display: block; font-size: 12px; color: var(--muted); }
     #searches button { padding: 4px 8px; flex: none; }
+    #searches .best { display: block; font-size: 12px; }
+    #searches a { color: var(--accent); }
+    #addForm { display: flex; gap: 6px; margin-top: 8px; }
+    #addForm input { flex: 1; min-width: 0; }
+    #addForm button { flex: none; }
     details { margin-top: 12px; }
     summary { cursor: pointer; color: var(--muted); }
     [hidden] { display: none !important; }
@@ -57,7 +62,11 @@
     <div class="card">
       <h2 id="searchesTitle">Що шукаю</h2>
       <ul id="searches"></ul>
-      <p class="muted" id="noSearches" hidden>Поки нічого. Напиши боту, що шукаєш, наприклад «драбина до 3000».</p>
+      <p class="muted" id="noSearches" hidden>Поки нічого. Додай перший пошук нижче.</p>
+      <form id="addForm">
+        <input id="addText" placeholder="Що шукаєш? Напр.: драбина до 3000" aria-label="Новий пошук" autocomplete="off" maxlength="200">
+        <button id="addBtn">➕</button>
+      </form>
     </div>
 
     <button id="check" class="primary">🔄 Перевірити зараз</button>

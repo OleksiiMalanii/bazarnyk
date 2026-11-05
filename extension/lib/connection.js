@@ -20,5 +20,7 @@ export async function workerApi(connection) {
     state: () => call('/ext/state'),
     send: (text) => call('/ext/send', { method: 'POST', body: JSON.stringify({ text }) }),
     remove: (id) => call('/ext/delete', { method: 'POST', body: JSON.stringify({ id }) }),
+    pause: (id) => call('/ext/pause', { method: 'POST', body: JSON.stringify({ id }) }),
+    add: (text) => call('/ext/add', { method: 'POST', body: JSON.stringify({ text }) }),
   };
 }
