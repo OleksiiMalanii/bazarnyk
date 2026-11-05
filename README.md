@@ -60,8 +60,7 @@ Prom — раз на годину                  OLX б/в і Allo — раз 
 Worker приймає повідомлення одразу, відповідає за секунду і запускає хмарну перевірку на GitHub, тому перші результати приходять за 1–2 хвилини.
 
 1. Зареєструйся на [cloudflare.com](https://dash.cloudflare.com/sign-up).
-2. У `worker/wrangler.toml` вкажи свій репозиторій у `GITHUB_REPO`.
-3. У папці `worker`:
+2. У папці `worker`:
    ```bash
    npx wrangler@4.151.3 login
    npx wrangler@4.151.3 deploy
@@ -70,8 +69,8 @@ Worker приймає повідомлення одразу, відповіда�
    npx wrangler@4.151.3 secret put WEBHOOK_SECRET
    ```
    `WEBHOOK_SECRET` — будь-який довгий випадковий рядок.
-4. Необов'язково: [GitHub-токен](https://github.com/settings/personal-access-tokens/new) лише на свій репозиторій з правом **Actions: Read and write** → `npx wrangler@4.151.3 secret put GITHUB_TOKEN`. Без нього результати прийдуть з найближчим запуском (до 30 хв).
-5. Підключи бота до Worker (адреса з кроку `deploy`):
+3. Необов'язково: [GitHub-токен](https://github.com/settings/personal-access-tokens/new) лише на свій репозиторій з правом **Actions: Read and write** → `npx wrangler@4.151.3 secret put GITHUB_TOKEN`, і назва репозиторію (`твій-логін/bazarnyk`) → `npx wrangler@4.151.3 secret put GITHUB_REPO`. Без них результати прийдуть з найближчим запуском (до 30 хв).
+4. Підключи бота до Worker (адреса з кроку `deploy`):
    ```bash
    curl -X POST -H "x-setup-key: <WEBHOOK_SECRET>" https://bazarnyk.<твій-субдомен>.workers.dev/setup
    ```

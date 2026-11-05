@@ -2,7 +2,5 @@ name = "bazarnyk"
 main = "index.js"
 compatibility_date = "2026-10-01"
 
-[vars]
-GITHUB_REPO = "OleksiiMalanii/bazarnyk"
-
-# Secrets (wrangler secret put …): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WEBHOOK_SECRET, GITHUB_TOKEN (optional)
+# Secrets (wrangler secret put …): TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, WEBHOOK_SECRET,
+# and optionally GITHUB_TOKEN + GITHUB_REPO (e.g. "your-name/bazarnyk") to start the cloud job instantly.

@@ -44,7 +44,7 @@ async function onUpdate(update, tg, env, ctx) {
   if (!(await handleUpdate(update, { tg, chatId, data: state.data, parse }))) return;
   await saveState(tg, chatId, state);
   // New search: start the cloud job now instead of waiting up to 30 minutes.
-  if (state.data.nextId > nextId && env.GITHUB_TOKEN) ctx.waitUntil(dispatch(env));
+  if (state.data.nextId > nextId && env.GITHUB_TOKEN && env.GITHUB_REPO) ctx.waitUntil(dispatch(env));
 }
 
 const dispatch = (env) =>
