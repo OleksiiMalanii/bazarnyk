@@ -8,7 +8,7 @@ import { pick, siteQuery } from '../extension/lib/match.js';
 import { promInStock } from '../extension/lib/prom.js';
 import { shopsFor, isDue } from '../extension/lib/sites.js';
 import { escape } from '../extension/lib/html.js';
-import { suggestExcludes, suggestMinPrice, parseRequest, AI_VERSION } from './ai.js';
+import { suggestExcludes, suggestMinPrice, analyzeListings, parseRequest, AI_VERSION } from './ai.js';
 
 
 const { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId } = process.env;
@@ -76,11 +76,22 @@ for (const s of state.data.searches.filter((s) => s.raw)) {
   changed = true;
 }
 
-// AI filter: once per search, ask for words that mark irrelevant listings (toys, books, scrap...).
+// Search the cloud shops; failures are logged and skipped.
+async function searchShops(s, shops) {
+  const results = await Promise.allSettled(shops.map((site) => site.search(siteQuery(s.q))));
+  results.forEach((r, i) => r.status === 'rejected' && console.error(`${shops[i].id} failed for "${s.q}": ${r.reason.message}`));
+  return results;
+}
+
+// AI filter, once per search: generic junk words (toys, books, scrap) plus what AI learns from real shop results —
+// which items are the product itself, which words mark accessories, and a price floor from the real median.
 for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) : []) {
   try {
-    s.not = await suggestExcludes(s.q, ai);
-    s.min = await suggestMinPrice(s.q, s.max, ai);
+    const generic = await suggestExcludes(s.q, ai);
+    const found = pick((await searchShops(s, shopsFor(state.data, 'cloud'))).flatMap((r) => r.value ?? []), { q: s.q, max: s.max });
+    const learned = await analyzeListings(s.q, s.max, found, ai, generic);
+    s.not = learned.not;
+    s.min = learned.min ?? (await suggestMinPrice(s.q, s.max, ai));
     s.aiV = AI_VERSION;
   } catch (e) {
     console.error(`AI failed for "${s.q}": ${e.message}`); // retried on the next run
@@ -101,14 +112,9 @@ let attempts = 0;
 for (const s of state.data.searches.filter((s) => !s.raw)) {
   const shops = shopsFor(state.data, 'cloud');
   if (!shops.length || (!force && !isDue(s.checkedAt, state.data))) continue;
-  const results = await Promise.allSettled(shops.map((site) => site.search(siteQuery(s.q))));
-  results.forEach((r, i) => {
-    attempts++;
-    if (r.status === 'rejected') {
-      failures++;
-      console.error(`${shops[i].id} failed for "${s.q}": ${r.reason.message}`);
-    }
-  });
+  const results = await searchShops(s, shops);
+  attempts += results.length;
+  failures += results.filter((r) => r.status === 'rejected').length;
   // Keep the 3 cheapest that are really in stock. Prom's search page lies about stock, so check its product pages.
   const items = [];
   for (const i of pick(results.flatMap((r) => r.value ?? []), s).slice(0, 10)) {

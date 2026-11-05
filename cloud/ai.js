@@ -16,7 +16,7 @@ const PROMPT =
   'Почни відповідь одразу з першого слова: лише слова через кому, без вступу й пояснень.';
 
 // Bump when the prompt or parsing changes: searches get their exclusions regenerated.
-export const AI_VERSION = 4;
+export const AI_VERSION = 5;
 
 const PRICE_PROMPT =
   'Яка типова ціна вживаного товару за цим запитом на OLX в Україні, у гривнях? Відповідай лише одним числом.';
@@ -29,6 +29,10 @@ export async function suggestMinPrice(query, max, ai) {
 export function parseMinPrice(reply, max) {
   const typical = Number(reply.replace(/(\d)[\s ](?=\d{3})/g, '$1').match(/\d+/)?.[0]);
   if (!(typical > 0)) return null;
+  return floorFrom(typical, max);
+}
+
+function floorFrom(typical, max) {
   const min = Math.round((typical * 0.3) / 10) * 10;
   // Never let the floor eat the user's own budget.
   return max ? Math.min(min, Math.round(max / 2)) : min;
@@ -106,4 +110,31 @@ export function parseWords(text, query) {
   return [...new Set(words)]
     .filter((w) => !wanted.some((q) => q.includes(stem(w)) || w.includes(stem(q))))
     .slice(0, 25);
+}
+
+const LISTINGS_PROMPT =
+  'Користувач шукає товар за запитом нижче. Далі — пронумеровані назви товарів, які знайшли магазини за цим запитом. ' +
+  'Визнач, які з них — саме той товар, що шукає користувач, а не аксесуари, запчастини, чохли, глайди, кабелі, ' +
+  'інші товари чи зовсім інші моделі. Також випиши слова, які є в назвах НЕрелевантних товарів і показують, що це не він ' +
+  '(наприклад «глайди», «чохол», «скло»), українською і російською. ' +
+  'Відповідай лише одним рядком JSON без пояснень: {"relevant": [номери], "junk": ["слова"]}.';
+
+// Learns from real shop results what is the product and what is junk around it:
+// returns { not: junk words, min: 30% of the median real price } (either may be empty when data is thin).
+// extra: words from suggestExcludes, checked against real matches the same way.
+export async function analyzeListings(query, max, items, ai, extra = []) {
+  if (items.length < 3) return { not: extra, min: null };
+  const list = items.slice(0, 40).map((i, n) => `${n + 1}. ${i.title} — ${i.price} грн`).join('\n');
+  return parseListingsReply(await ask(`Запит: «${query}»\n\n${list}`, LISTINGS_PROMPT, ai), query, max, items, extra);
+}
+
+export function parseListingsReply(reply, query, max, items, extra = []) {
+  const json = JSON.parse(reply.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+  const relevant = (json.relevant ?? []).map((n) => items[n - 1]).filter(Boolean);
+  // A junk word must never appear in the title of a real match, or it would hide real offers.
+  const titles = relevant.map((i) => i.title.toLowerCase());
+  const not = [...new Set([...extra, ...parseWords((json.junk ?? []).join(', '), query)])].filter((w) => !titles.some((t) => t.includes(stem(w))));
+  if (relevant.length < 3) return { not, min: null };
+  const prices = relevant.map((i) => i.price).sort((a, b) => a - b);
+  return { not, min: floorFrom(prices[Math.floor(prices.length / 2)], max) };
 }

@@ -252,3 +252,19 @@ test('shop parsers read cards and skip out-of-stock', async () => {
     [{ site: 'Hotline', id: 'hotline:/ua/jbl/', title: 'JBL Tune', price: 1938, url: 'https://hotline.ua/ua/jbl/' }]);
   assert.equal(s.parseEldorado('<body><div id="x" class="TileBlockstyled__StyledTileBlock-a"><a href="/uk/jbl/p1/"><span title="JBL">JBL</span></a><div class="Pricestyled__StyledCurrentPrice-sc-x"><span class="b">999<!-- --> </span></div></div>')[0].price, 999);
 });
+
+test('listing analysis: junk words from real titles, floor from the real median', async () => {
+  const { parseListingsReply } = await import('../cloud/ai.js');
+  const items = [
+    { title: 'Глайди для Logitech Superstrike', price: 499 },
+    { title: 'Мишка Logitech G Pro X2 Superstrike', price: 9000 },
+    { title: 'Logitech Superstrike біла', price: 10000 },
+    { title: 'Logitech Superstrike чорна', price: 11000 },
+  ];
+  const reply = '{"relevant": [2, 3, 4, 99], "junk": ["глайди", "мишка", "чорна"]}';
+  const r = parseListingsReply(reply, 'Logitech Superstrike', null, items, ['книга']);
+  // "мишка" and "чорна" are in real matches, so they must not become exclusions.
+  assert.deepEqual(r.not, ['книга', 'глайди']);
+  assert.equal(r.min, 3000);
+  assert.equal(parseListingsReply('{"relevant": [2], "junk": []}', 'x', null, items).min, null);
+});
