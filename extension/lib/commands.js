@@ -1,4 +1,4 @@
-import { escape } from './html.js';
+import { escape, money } from './html.js';
 import { SITES, EVERY_OPTIONS, settingsOf, everyLabel } from './sites.js';
 
 export const BUTTONS = { add: '➕ Додати пошук', list: '📋 Мої пошуки', settings: '⚙️ Налаштування', help: '❓ Допомога' };
@@ -18,15 +18,20 @@ export const MENU = [
   { command: 'help', description: 'Як користуватися' },
 ];
 
+// HTML.
 export const HELP = [
-  'Просто напиши, що шукаєш, наприклад:',
-  '«драбина Hailo до 3000» або «пошукай мені велосипед гірський до 5 тис»',
+  '👋 <b>Я Bazarnyk — шукаю найдешевше б/в і в магазинах.</b>',
   '',
-  'Я регулярно перевірятиму OLX (б/в) і магазини й напишу, коли знайду дешевше або нове.',
-  '«📋 Мої пошуки» — список і видалення.',
-  '«⚙️ Налаштування» — на яких сайтах шукати, як часто, і підключення браузера для OLX.',
+  '✍️ <b>Просто напиши, що шукаєш:</b>',
+  '• <i>драбина Hailo до 3000</i>',
+  '• <i>пошукай мені велосипед гірський до 5 тис</i>',
   '',
-  'Слово з мінусом відкидає оголошення з ним: «драбина -книга».',
+  '🔔 Регулярно перевіряю OLX і магазини та пишу, коли знайду дешевше або нове.',
+  '',
+  '📋 <b>Мої пошуки</b> — список, пауза, видалення',
+  '⚙️ <b>Налаштування</b> — сайти, як часто шукати, браузер для OLX',
+  '',
+  '💡 Слово з мінусом відкидає зайве: <i>драбина -книга</i>',
 ].join('\n');
 
 const chunk = (arr, n) => arr.reduce((rows, x, i) => (i % n ? rows.at(-1).push(x) : rows.push([x]), rows), []);
@@ -37,10 +42,10 @@ export function settingsView(data) {
   const text = [
     '⚙️ <b>Налаштування</b>',
     '',
-    'Де шукати — натисни на сайт, щоб увімкнути ✅ чи вимкнути ⬜.',
-    '🖥 — цей сайт шукає розширення в браузері (поки браузер відкритий).',
+    '🛍 <b>Де шукати</b> — натисни на сайт, щоб увімкнути ✅ чи вимкнути ⬜.',
+    '<i>🖥 — цей сайт шукає розширення в браузері.</i>',
     '',
-    every ? `Як часто перевіряти: зараз кожні <b>${everyLabel(every)}</b>.` : 'Як часто перевіряти: зараз <b>не повторювати</b> — кожен пошук перевіряється один раз.',
+    every ? `⏱ <b>Як часто</b> — зараз кожні <b>${everyLabel(every)}</b>.` : '⏱ <b>Як часто</b> — зараз <b>не повторювати</b>: кожен пошук перевіряю один раз.',
   ].join('\n');
   const siteButtons = SITES.map((s) => ({ text: `${sites.includes(s.id) ? '✅' : '⬜'} ${s.name}${s.where === 'browser' ? ' 🖥' : ''}`, callback_data: `site:${s.id}` }));
   const everyButtons = EVERY_OPTIONS.map((m) => ({ text: `${m === every ? '✅ ' : ''}${m ? everyLabel(m) : '⏸ Не повторювати'}`, callback_data: `every:${m}` }));
@@ -81,13 +86,15 @@ export const parseFree = (text) =>
 export function addSearch(data, s) {
   data.searches.push({ id: data.nextId++, ...s, best: null });
   // s.raw: free text the Worker could not parse with AI; the cloud job refines it shortly.
-  if (s.raw) return `✅ Прийняв: «${escape(s.raw)}»\nЗараз уточню, що саме шукати, і почну пошук.`;
-  return `✅ Шукаю: <b>${escape(s.q)}</b>${s.max ? ` до ${s.max} грн` : ''}\nНапишу, щойно знайду щось підходяще (зазвичай протягом години).`;
+  if (s.raw) return `👌 <b>Прийняв:</b> «${escape(s.raw)}»\n⏳ Уточню, що саме шукати, налаштую фільтр і почну пошук.`;
+  return `✅ <b>Шукаю</b>\n🔎 ${escape(s.q)}${s.max ? `\n💰 до ${money(s.max)}` : ''}\n\nНапишу, щойно знайду щось підходяще (зазвичай протягом години).`;
 }
 
 const listText = (data) =>
-  ['Твої пошуки. ⏸ — зупинити повторний пошук, ▶️ — відновити, 🗑 — видалити:', ...data.searches.map((s, i) =>
-    `${i + 1}. ${s.paused ? '⏸ ' : ''}${escape(s.q)}${s.max ? ` (до ${s.max} грн)` : ''}${s.paused ? ' — на паузі' : ''}`)].join('\n');
+  [`📋 <b>Мої пошуки</b> · ${data.searches.length}`, ...data.searches.map((s, i) => [
+    `\n<b>${i + 1}. ${escape(s.q)}</b>${s.paused ? ' — ⏸ на паузі' : ''}`,
+    [s.max && `до ${money(s.max)}`, s.best && `💰 зараз від ${money(s.best.price)} (${escape(s.best.site)})`].filter(Boolean).join(' · '),
+  ].filter(Boolean).join('\n')), '\n<i>Кнопки нижче: ⏸ пауза · ▶️ відновити · 🗑 видалити</i>'].join('\n');
 
 // Buttons under the search list: pause/resume and delete for each search.
 export const listButtons = (data) => ({
@@ -115,7 +122,7 @@ export function handleCommand(text, data) {
   switch (cmd) {
     case 'start':
     case 'help':
-      return escape(HELP);
+      return HELP;
     case 'add': {
       const s = parseAdd(args);
       return s ? addSearch(data, s) : EXAMPLE;
@@ -123,12 +130,12 @@ export function handleCommand(text, data) {
     case 'list':
       return data.searches.length
         ? listText(data)
-        : `Пошуків поки немає. ${EXAMPLE}`;
+        : `📭 Пошуків поки немає.\n${EXAMPLE}`;
     case 'del': {
       const n = Number(args);
       if (!data.searches[n - 1]) return 'Такого пошуку вже немає.';
       const [removed] = data.searches.splice(n - 1, 1);
-      return `🗑 Видалено: ${escape(removed.q)}`;
+      return `🗑 Видалено: <b>${escape(removed.q)}</b>`;
     }
     default:
       return null;

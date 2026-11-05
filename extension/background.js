@@ -1,4 +1,5 @@
 import { formatList } from './lib/telegram.js';
+import { escape, money } from './lib/html.js';
 import { pick, siteQuery } from './lib/match.js';
 import { olx } from './lib/olx.js';
 import { shopsFor, settingsOf, isDue } from './lib/sites.js';
@@ -46,7 +47,7 @@ async function check(force) {
     const items = pick(results.flatMap((r) => r.value ?? []), s);
     const prev = shopBest[s.id];
     if (items[0] && (!prev || items[0].price < prev.price)) {
-      await api.send(formatList(prev ? `📉 Нова найнижча ціна — «${s.q}»` : `🏪 Найдешевше зараз — «${s.q}»`, items.slice(0, 3)));
+      await api.send(formatList(prev ? `📉 Ціна впала (було ${money(prev.price)})` : '🏪 Найдешевше в магазинах', s.q, items.slice(0, 3)));
       sent++;
     }
     if (items[0]) shopBest[s.id] = { price: items[0].price, site: items[0].site, url: items[0].url };
@@ -66,10 +67,10 @@ async function check(force) {
       const cheap = fresh.reduce((a, b) => (b.price < a.price ? b : a));
       if (!olxBest[s.id] || cheap.price < olxBest[s.id].price) olxBest[s.id] = { price: cheap.price, site: 'OLX', url: cheap.url };
 
-      const title = first ? `🔎 OLX б/в: найдешевше зараз — «${s.q}»` : `🆕 OLX б/в: нові оголошення — «${s.q}»`;
+      const heading = first ? '♻️ OLX б/в: найдешевше зараз' : '🆕 OLX б/в: нові оголошення';
       const shop = [s.best, shopBest[s.id]].filter(Boolean).sort((a, b) => a.price - b.price)[0];
-      const shopLine = shop ? `\n🏪 У магазинах найдешевше: ${shop.price} грн (${shop.site})` : '';
-      await api.send(formatList(title, fresh) + shopLine);
+      const shopLine = shop ? `🏪 Для порівняння, новий у магазині: <b>${money(shop.price)}</b> (${escape(shop.site)})` : '';
+      await api.send(formatList(heading, s.q, fresh, shopLine));
       sent++;
     } catch (e) {
       errors.push(`OLX: ${e.message}`);

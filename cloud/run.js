@@ -7,7 +7,7 @@ import { handleUpdate } from '../extension/lib/bot.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { promInStock } from '../extension/lib/prom.js';
 import { shopsFor, isDue, settingsOf } from '../extension/lib/sites.js';
-import { escape } from '../extension/lib/html.js';
+import { escape, money } from '../extension/lib/html.js';
 import { suggestExcludes, suggestMinPrice, analyzeListings, parseRequest, AI_VERSION } from './ai.js';
 
 
@@ -65,7 +65,7 @@ for (const s of state.data.searches.filter((s) => s.raw)) {
       const r = await parseRequest(s.raw, ai);
       if (r) {
         Object.assign(s, r, { aiV: null, best: null });
-        await tg('sendMessage', { chat_id: chatId, text: `🤖 Зрозумів так: шукаю <b>${escape(s.q)}</b>${s.max ? ` до ${s.max} грн` : ''}`, parse_mode: 'HTML' });
+        await tg('sendMessage', { chat_id: chatId, text: `🤖 <b>Зрозумів так</b>\n🔎 ${escape(s.q)}${s.max ? `\n💰 до ${money(s.max)}` : ''}`, parse_mode: 'HTML' });
       }
     } catch (e) {
       console.error(`AI request parsing failed: ${e.message}`); // retried on the next run
@@ -98,8 +98,12 @@ for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) 
     continue;
   }
   s.best = null; // shop best may have been junk; re-evaluate with the new filter
-  const floor = s.min ? `\nІгнорую дешевше за ${s.min} грн: зазвичай це аксесуари чи брухт.` : '';
-  await tg('sendMessage', { chat_id: chatId, text: `🤖 «${escape(s.q)}»: відкидатиму оголошення зі словами: ${escape(s.not.join(', '))}${floor}`, parse_mode: 'HTML' });
+  const text = [
+    `🧹 <b>Фільтр готовий</b>\n🔎 ${escape(s.q)}`,
+    s.not.length && `Пропускатиму оголошення зі словами:\n<i>${escape(s.not.join(', '))}</i>`,
+    s.min && `Дешевше за <b>${money(s.min)}</b> — пропускаю: зазвичай це аксесуари чи брухт.`,
+  ].filter(Boolean).join('\n\n');
+  await tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML' });
   changed = true;
 }
 
@@ -109,10 +113,10 @@ for (const s of state.data.searches.filter((s) => !s.ready && !s.raw && (!hasAi 
   s.ready = true;
   changed = true;
   if (s.checkedAt) continue; // already searched before this message existed: nothing new to announce
-  const browserLine = browserOn ? '\n\n🖥 Щоб одразу пошукати на OLX і Алло, натисни «🔄 Перевірити зараз» у розширенні браузера.' : '';
+  const browserLine = browserOn ? '\n🖥 OLX і Алло шукає браузер. Щоб не чекати, натисни «🔄 Перевірити зараз» у розширенні.' : '';
   await tg('sendMessage', {
     chat_id: chatId,
-    text: `✅ «${escape(s.q)}» готовий до пошуку: усі параметри налаштовано.\nМагазини перевіряю сам — результати прийдуть сюди.${browserLine}`,
+    text: `✅ <b>Усе налаштовано — шукаю!</b>\n🔎 ${escape(s.q)}\n\n🏪 Магазини перевіряю сам — знахідки прийдуть сюди.${browserLine}`,
     parse_mode: 'HTML',
   });
   changed = true;
@@ -139,8 +143,8 @@ for (const s of state.data.searches.filter((s) => !s.raw && !s.paused)) {
   console.log(`"${s.q}": ${items.length} matching shop items in stock`);
   const top = items[0];
   if (top && (!s.best || top.price < s.best.price)) {
-    const title = s.best ? `📉 Магазини: нова найнижча ціна — «${s.q}»` : `🏪 Магазини: найдешевше зараз — «${s.q}»`;
-    await tg('sendMessage', { chat_id: chatId, text: formatList(title, items.slice(0, 3)), parse_mode: 'HTML', disable_web_page_preview: true });
+    const heading = s.best ? `📉 Ціна впала (було ${money(s.best.price)})` : '🏪 Найдешевше в магазинах';
+    await tg('sendMessage', { chat_id: chatId, text: formatList(heading, s.q, items.slice(0, 3)), parse_mode: 'HTML', disable_web_page_preview: true });
   }
   if (top) s.best = { price: top.price, site: top.site, url: top.url };
   s.checkedAt = Date.now();

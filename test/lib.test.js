@@ -33,9 +33,9 @@ test('parseAdd reads query and optional max price', () => {
 
 test('handleCommand add/list/del', () => {
   const data = { searches: [], nextId: 1 };
-  assert.match(handleCommand('/add@bazarnyk_bot драбина до 2000', data), /Шукаю: <b>драбина<\/b> до 2000 грн/);
+  assert.match(handleCommand('/add@bazarnyk_bot драбина до 2000', data), /Шукаю<\/b>\n🔎 драбина\n💰 до 2 000 грн/);
   assert.deepEqual(data.searches[0], { id: 1, q: 'драбина', max: 2000, best: null });
-  assert.match(handleCommand('/list', data), /1\. драбина \(до 2000 грн\)/);
+  assert.match(handleCommand('/list', data), /<b>1\. драбина<\/b>\nдо 2 000 грн/);
   assert.match(handleCommand('/del 5', data), /вже немає/);
   assert.match(handleCommand('/del 1', data), /Видалено/);
   assert.equal(data.searches.length, 0);
@@ -167,7 +167,7 @@ test('handleUpdate: free text, delete button, strangers', async () => {
   assert.equal(await handleUpdate({ message: { chat: { id: 9 }, text: 'пошукай драбину' } }, ctx), false);
   assert.equal(await handleUpdate({ message: { chat: { id: 7 }, text: 'пошукай драбину' } }, ctx), true);
   assert.equal(data.searches[0].q, 'драбину');
-  assert.match(sent.at(-1), /Прийняв: «пошукай драбину»/);
+  assert.match(sent.at(-1), /Прийняв:<\/b> «пошукай драбину»/);
 
   await handleUpdate({ callback_query: { id: 'x', data: 'del:1', message: { chat: { id: 7 } } } }, ctx);
   assert.equal(data.searches.length, 0);
@@ -278,7 +278,7 @@ test('pause one search, or stop repeating all of them', async () => {
   const press = (d) => handleUpdate({ callback_query: { id: 'x', data: d, message: { chat: { id: 7 }, message_id: 3 } } }, { tg, chatId: 7, data });
   assert.equal(await press('pause:4'), true);
   assert.equal(data.searches[0].paused, true);
-  assert.match(edits.at(-1).text, /⏸ драбина — на паузі/);
+  assert.match(edits.at(-1).text, /драбина<\/b> — ⏸ на паузі/);
   assert.equal(edits.at(-1).reply_markup.inline_keyboard[0][0].text, '▶️ 1. драбина');
   await press('pause:4');
   assert.equal(data.searches[0].paused, false);
@@ -288,4 +288,17 @@ test('pause one search, or stop repeating all of them', async () => {
   assert.equal(isDue(undefined, data, now), true); // a new search is still checked once
   assert.equal(isDue(now - 30 * 86400_000, data, now), false);
   assert.match(edits.at(-1).text, /не повторювати/);
+});
+
+test('find messages: prices with thin grouping, medals, escaped titles', async () => {
+  const { formatList } = await import('../extension/lib/telegram.js');
+  const text = formatList('🏪 Найдешевше в магазинах', 'a<b', [
+    { price: 12500, site: 'Prom', title: 'Драбина <3м>', url: 'https://x/?a=1&b=2' },
+    { price: 13000, site: 'OLX', city: 'Київ', title: 'Драбина', url: 'https://y' },
+  ], '🏪 note');
+  assert.equal(text, [
+    '<b>🏪 Найдешевше в магазинах</b>', '🔎 a&lt;b', '',
+    '🥇 <b>12 500 грн</b> · Prom\n<a href="https://x/?a=1&amp;b=2">Драбина &lt;3м&gt;</a>\n\n🥈 <b>13 000 грн</b> · OLX, Київ\n<a href="https://y">Драбина</a>',
+    '', '🏪 note',
+  ].join('\n'));
 });

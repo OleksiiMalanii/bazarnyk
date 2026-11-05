@@ -1,4 +1,4 @@
-import { escape } from './html.js';
+import { escape, money } from './html.js';
 
 export function telegram(token) {
   return async (method, body = {}) => {
@@ -14,7 +14,13 @@ export function telegram(token) {
   };
 }
 
-export const formatItem = (i) =>
-  `<b>${i.price} грн</b> · <a href="${escape(i.url)}">${escape(i.title)}</a> (${i.site}${i.city ? `, ${escape(i.city)}` : ''})`;
+const MEDALS = ['🥇', '🥈', '🥉'];
+const short = (s, n = 90) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
-export const formatList = (title, items) => [title, ...items.map(formatItem)].join('\n');
+// One find: price and where on the first line, the clickable title on the second.
+export const formatItem = (i, n = 0) =>
+  `${MEDALS[n] ?? '▫️'} <b>${money(i.price)}</b> · ${escape(i.site)}${i.city ? `, ${escape(i.city)}` : ''}\n<a href="${escape(i.url)}">${escape(short(i.title))}</a>`;
+
+// heading: plain text like "🏪 Найдешевше в магазинах"; q: what was searched; note: an extra HTML line at the end.
+export const formatList = (heading, q, items, note = '') =>
+  [`<b>${escape(heading)}</b>`, `🔎 ${escape(q)}`, '', items.map(formatItem).join('\n\n'), ...(note ? ['', note] : [])].join('\n');
