@@ -6,7 +6,7 @@ import { parseFree, MENU } from '../extension/lib/commands.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
 import { promInStock } from '../extension/lib/prom.js';
-import { shopsFor, isDue } from '../extension/lib/sites.js';
+import { shopsFor, isDue, settingsOf } from '../extension/lib/sites.js';
 import { escape } from '../extension/lib/html.js';
 import { suggestExcludes, suggestMinPrice, analyzeListings, parseRequest, AI_VERSION } from './ai.js';
 
@@ -100,6 +100,21 @@ for (const s of hasAi ? state.data.searches.filter((s) => s.aiV !== AI_VERSION) 
   s.best = null; // shop best may have been junk; re-evaluate with the new filter
   const floor = s.min ? `\nІгнорую дешевше за ${s.min} грн: зазвичай це аксесуари чи брухт.` : '';
   await tg('sendMessage', { chat_id: chatId, text: `🤖 «${escape(s.q)}»: відкидатиму оголошення зі словами: ${escape(s.not.join(', '))}${floor}`, parse_mode: 'HTML' });
+  changed = true;
+}
+
+// Tell the user once per search that everything is set up, so they know the browser check is worth pressing now.
+const browserOn = shopsFor(state.data, 'browser').length > 0 || settingsOf(state.data).sites.includes('olx');
+for (const s of state.data.searches.filter((s) => !s.ready && !s.raw && (!hasAi || s.aiV === AI_VERSION))) {
+  s.ready = true;
+  changed = true;
+  if (s.checkedAt) continue; // already searched before this message existed: nothing new to announce
+  const browserLine = browserOn ? '\n\n🖥 Щоб одразу пошукати на OLX і Алло, натисни «🔄 Перевірити зараз» у розширенні браузера.' : '';
+  await tg('sendMessage', {
+    chat_id: chatId,
+    text: `✅ «${escape(s.q)}» готовий до пошуку: усі параметри налаштовано.\nМагазини перевіряю сам — результати прийдуть сюди.${browserLine}`,
+    parse_mode: 'HTML',
+  });
   changed = true;
 }
 // Save before confirming, so a crash re-processes commands instead of losing them.

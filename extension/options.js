@@ -17,16 +17,48 @@ async function show() {
     $('sites').textContent = here.length
       ? `Тут шукаю: ${here.join(', ')} · ${every ? `кожні ${everyLabel(every)}` : 'без повторів'}`
       : 'У боті вимкнені всі сайти, які шукає браузер (OLX, Алло). Увімкни їх у ⚙️ Налаштування.';
-    $('searches').replaceChildren(...data.searches.map((s) => {
-      const li = document.createElement('li');
-      li.textContent = `${s.q}${s.max ? ` — до ${s.max} грн` : ''}${s.raw ? ' (уточнюю…)' : ''}${s.paused ? ' ⏸ на паузі' : ''}`;
-      return li;
-    }));
-    $('noSearches').hidden = data.searches.length > 0;
+    renderSearches(connection, data.searches);
   } catch (e) {
     $('sites').textContent = '';
     $('status').textContent = `⚠️ ${e.message}`;
   }
+}
+
+const statusOf = (s) => (s.raw || !s.ready ? '⏳ налаштовую фільтри…' : s.paused ? '⏸ на паузі' : '✅ готовий до пошуку');
+
+// One row per search: name, price limit, status and a delete button.
+function renderSearches(connection, searches) {
+  $('searchesTitle').textContent = `Що шукаю (${searches.length})`;
+  $('noSearches').hidden = searches.length > 0;
+  $('searches').replaceChildren(...searches.map((s) => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = `${s.q}${s.max ? ` — до ${s.max} грн` : ''}`;
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = statusOf(s);
+    name.append(tag);
+    const del = document.createElement('button');
+    del.textContent = '🗑';
+    del.title = del.ariaLabel = `Видалити «${s.q}»`;
+    del.onclick = async () => {
+      // Two taps instead of confirm(): dialogs can close an extension popup.
+      if (del.textContent === '🗑') {
+        del.textContent = 'Видалити?';
+        return;
+      }
+      del.disabled = true;
+      try {
+        renderSearches(connection, (await (await workerApi(connection)).remove(s.id)).searches);
+      } catch (e) {
+        $('status').textContent = `⚠️ ${e.message}`;
+        del.disabled = false;
+      }
+    };
+    li.append(name, del);
+    return li;
+  }));
 }
 
 $('connect').onclick = async () => {

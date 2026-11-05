@@ -16,5 +16,9 @@ export async function workerApi(connection) {
     if (!res.ok) throw new Error(body.error ?? `Бот не відповідає (${res.status})`);
     return body;
   };
-  return { state: () => call('/ext/state'), send: (text) => call('/ext/send', { method: 'POST', body: JSON.stringify({ text }) }) };
+  return {
+    state: () => call('/ext/state'),
+    send: (text) => call('/ext/send', { method: 'POST', body: JSON.stringify({ text }) }),
+    remove: (id) => call('/ext/delete', { method: 'POST', body: JSON.stringify({ id }) }),
+  };
 }

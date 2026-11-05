@@ -23,7 +23,12 @@
     .muted { color: var(--muted); font-size: 13px; }
     .error { color: var(--warn); white-space: pre-wrap; }
     #status { white-space: pre-wrap; margin: 8px 0 0; }
-    ul { margin: 4px 0 0; padding-left: 18px; }
+    #searches { margin: 4px 0 0; padding: 0; list-style: none; }
+    #searches li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+    #searches li:first-child { border-top: 0; }
+    #searches .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    #searches .tag { display: block; font-size: 12px; color: var(--muted); }
+    #searches button { padding: 4px 8px; flex: none; }
     details { margin-top: 12px; }
     summary { cursor: pointer; color: var(--muted); }
     [hidden] { display: none !important; }
@@ -50,7 +55,7 @@
     <p class="muted" id="sites"></p>
 
     <div class="card">
-      <h2>Що шукаю</h2>
+      <h2 id="searchesTitle">Що шукаю</h2>
       <ul id="searches"></ul>
       <p class="muted" id="noSearches" hidden>Поки нічого. Напиши боту, що шукаєш, наприклад «драбина до 3000».</p>
     </div>

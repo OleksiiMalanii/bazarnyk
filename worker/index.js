@@ -2,7 +2,7 @@
 // It only edits the search list; the cloud job (started right away via GitHub) runs AI and searches.
 import { telegram } from '../extension/lib/telegram.js';
 import { loadState, saveState } from '../extension/lib/state.js';
-import { parseFree, MENU } from '../extension/lib/commands.js';
+import { parseFree, handleCommand, MENU } from '../extension/lib/commands.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 
 export default {
@@ -73,8 +73,20 @@ async function setup(tg, url, env) {
 async function extension(request, url, env) {
   const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const tg = telegram(env.TELEGRAM_BOT_TOKEN);
-  const { data } = await loadState(tg, env.TELEGRAM_CHAT_ID);
+  const state = await loadState(tg, env.TELEGRAM_CHAT_ID);
+  const { data } = state;
   if (!data.extKey || request.headers.get('x-ext-key') !== data.extKey) return json({ error: 'Код не підходить. Натисни в боті «🧩 Підключити браузер» і встав новий код.' }, 403);
+
+  if (url.pathname === '/ext/delete' && request.method === 'POST') {
+    const { id } = await request.json();
+    const n = data.searches.findIndex((s) => s.id === id) + 1;
+    const text = handleCommand(`/del ${n}`, data);
+    if (n) {
+      await saveState(tg, env.TELEGRAM_CHAT_ID, state);
+      await tg('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: `${text} (з браузера)`, parse_mode: 'HTML' });
+    }
+    return json({ ok: true, searches: data.searches });
+  }
 
   if (url.pathname === '/ext/state' && request.method === 'GET') return json({ searches: data.searches, settings: data.settings ?? null });
   if (url.pathname === '/ext/send' && request.method === 'POST') {
