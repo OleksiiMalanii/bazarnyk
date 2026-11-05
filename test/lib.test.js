@@ -201,3 +201,54 @@ test('availability: Prom product page and Allo out-of-stock cards', async () => 
 test('matchesQuery ignores spaces inside model names', () => {
   assert.ok(matchesQuery('Клавіатура WOOTING 60 HE+', 'Wooting 60HE'));
 });
+
+test('settings: toggle sites, pick interval, due check', async () => {
+  const { settingsView, applySetting } = await import('../extension/lib/commands.js');
+  const { settingsOf, isDue, shopsFor } = await import('../extension/lib/sites.js');
+  const data = { searches: [], nextId: 1 };
+  assert.equal(settingsOf(data).every, 60);
+  assert.ok(applySetting(data, 'site:prom'));
+  assert.ok(!settingsOf(data).sites.includes('prom'));
+  assert.ok(!shopsFor(data, 'cloud').some((s) => s.id === 'prom'));
+  assert.ok(applySetting(data, 'every:300'));
+  assert.equal(applySetting(data, 'every:7'), false);
+  assert.equal(applySetting(data, 'del:1'), false);
+  const view = settingsView(data);
+  assert.match(view.text, /кожні <b>5 год<\/b>/);
+  assert.ok(view.markup.inline_keyboard.flat().some((b) => b.text === '⬜ Prom'));
+  assert.ok(view.markup.inline_keyboard.flat().some((b) => b.text === '✅ 5 год'));
+  const now = Date.now();
+  assert.equal(isDue(now - 4 * 3600_000, data, now), false);
+  assert.equal(isDue(now - 5 * 3600_000, data, now), true);
+  assert.equal(isDue(undefined, data, now), true);
+});
+
+test('connect button gives a code the extension accepts', async () => {
+  const { handleUpdate } = await import('../extension/lib/bot.js');
+  const { parseCode } = await import('../extension/lib/connection.js');
+  const sent = [];
+  const tg = async (method, body) => (method === 'sendMessage' && sent.push(body.text), true);
+  const data = { searches: [], nextId: 1 };
+  const cb = { callback_query: { id: 'x', data: 'connect', message: { chat: { id: 7 }, message_id: 1 } } };
+  assert.equal(await handleUpdate(cb, { tg, chatId: 7, data, workerUrl: 'https://bazarnyk.me.workers.dev' }), true);
+  const code = sent.at(-1).match(/<code>([^<]+)<\/code>/)[1];
+  assert.deepEqual(parseCode(code), { url: 'https://bazarnyk.me.workers.dev', key: data.extKey });
+  assert.equal(parseCode('hello'), null);
+  // Without a Worker (polling mode) the bot explains instead of making a code.
+  assert.equal(await handleUpdate(cb, { tg, chatId: 7, data: { searches: [] } }), false);
+});
+
+test('shop parsers read cards and skip out-of-stock', async () => {
+  const s = await import('../extension/lib/shops.js');
+  assert.deepEqual(s.parseFoxtrot('<div class="product-card" data-title="JBL Tune" data-variant="InStock" data-price="1349"><a href="/uk/shop/jbl.html"></a></div>' +
+    '<div class="product-card" data-title="Old" data-variant="OutOfStock" data-price="9"><a href="/uk/shop/old.html"></a></div>'),
+  [{ site: 'Foxtrot', id: 'foxtrot:/uk/shop/jbl.html', title: 'JBL Tune', price: 1349, url: 'https://www.foxtrot.com.ua/uk/shop/jbl.html' }]);
+  const moyoUrl = 'https://www.moyo.ua/ua/jbl/1.html';
+  assert.equal(s.parseMoyo(`<div class="product-card  goods-item x" data-price="799" data-name="JBL" data-async="${btoa(moyoUrl)}" data-status-product="В наличии">`)[0].url, moyoUrl);
+  assert.equal(s.parseMoyo(`<div class="product-card goods-item" data-price="799" data-name="JBL" data-async="${btoa(moyoUrl)}" data-status-product="Нет в наличии">`).length, 0);
+  assert.equal(s.parseEpicentr('<li itemtype="https://schema.org/Product"><a href="/ua/shop/jbl.html"></a><button aria-label="Додати у список бажань товар: JBL"></button>' +
+    '<link itemprop="availability" href="http://schema.org/InStock"><s><data value="899.00" itemprop="price"></data></s><data value="707.00" itemprop="price"></data></li>')[0].price, 707);
+  assert.deepEqual(s.parseHotline('<div class="list-item list-item--column x"><a href="/ua/jbl/" data-x class="item-title text-md"> JBL Tune </a><div class="text-md text-orange text-lh--1" > 1 938 – 4 383 ₴ </div></div>'),
+    [{ site: 'Hotline', id: 'hotline:/ua/jbl/', title: 'JBL Tune', price: 1938, url: 'https://hotline.ua/ua/jbl/' }]);
+  assert.equal(s.parseEldorado('<body><div id="x" class="TileBlockstyled__StyledTileBlock-a"><a href="/uk/jbl/p1/"><span title="JBL">JBL</span></a><div class="Pricestyled__StyledCurrentPrice-sc-x"><span class="b">999<!-- --> </span></div></div>')[0].price, 999);
+});

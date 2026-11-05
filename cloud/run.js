@@ -1,17 +1,15 @@
 // Cloud job (GitHub Actions, every 30 min): answers bot commands (unless the Worker does), runs the AI steps
-// and checks shops hourly.
+// and checks the shops turned on in ⚙️ Налаштування, as often as chosen there.
 import { telegram, formatList } from '../extension/lib/telegram.js';
 import { loadState, saveState, saveMerged } from '../extension/lib/state.js';
 import { parseFree, MENU } from '../extension/lib/commands.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
-import { prom, promInStock } from '../extension/lib/prom.js';
+import { promInStock } from '../extension/lib/prom.js';
+import { shopsFor, isDue } from '../extension/lib/sites.js';
 import { escape } from '../extension/lib/html.js';
 import { suggestExcludes, suggestMinPrice, parseRequest, AI_VERSION } from './ai.js';
 
-// Allo blocks GitHub servers (403), so the extension checks it instead.
-const SHOPS = { Prom: prom };
-const CHECK_EVERY_MS = 55 * 60 * 1000;
 
 const { TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId } = process.env;
 if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
@@ -101,20 +99,21 @@ const force = process.argv.includes('--now');
 let failures = 0;
 let attempts = 0;
 for (const s of state.data.searches.filter((s) => !s.raw)) {
-  if (!force && s.checkedAt && Date.now() - s.checkedAt < CHECK_EVERY_MS) continue;
-  const results = await Promise.allSettled(Object.values(SHOPS).map((f) => f(siteQuery(s.q))));
+  const shops = shopsFor(state.data, 'cloud');
+  if (!shops.length || (!force && !isDue(s.checkedAt, state.data))) continue;
+  const results = await Promise.allSettled(shops.map((site) => site.search(siteQuery(s.q))));
   results.forEach((r, i) => {
     attempts++;
     if (r.status === 'rejected') {
       failures++;
-      console.error(`${Object.keys(SHOPS)[i]} failed for "${s.q}": ${r.reason.message}`);
+      console.error(`${shops[i].id} failed for "${s.q}": ${r.reason.message}`);
     }
   });
-  // Keep the 3 cheapest that are really in stock (checking product pages one by one, at most 10).
+  // Keep the 3 cheapest that are really in stock. Prom's search page lies about stock, so check its product pages.
   const items = [];
   for (const i of pick(results.flatMap((r) => r.value ?? []), s).slice(0, 10)) {
     if (items.length === 3) break;
-    if (await promInStock(i.url).catch(() => true)) items.push(i);
+    if (i.site !== 'Prom' || (await promInStock(i.url).catch(() => true))) items.push(i);
   }
   console.log(`"${s.q}": ${items.length} matching shop items in stock`);
   const top = items[0];

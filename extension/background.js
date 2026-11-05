@@ -1,11 +1,10 @@
-import { telegram, formatList } from './lib/telegram.js';
-import { loadState } from './lib/state.js';
+import { formatList } from './lib/telegram.js';
 import { pick, siteQuery } from './lib/match.js';
 import { olx } from './lib/olx.js';
-import { allo } from './lib/allo.js';
+import { shopsFor, settingsOf, isDue } from './lib/sites.js';
+import { workerApi } from './lib/connection.js';
 
-// Wake every 10 min so new searches get OLX results quickly; each search is still checked once an hour.
-const CHECK_EVERY_MS = 55 * 60 * 1000;
+// Wake every 10 min so new searches get results quickly; each search is checked as often as set in the bot.
 const ensureAlarm = () => chrome.alarms.create('check', { delayInMinutes: 1, periodInMinutes: 10 });
 chrome.runtime.onInstalled.addListener(ensureAlarm);
 chrome.runtime.onStartup.addListener(ensureAlarm);
@@ -18,64 +17,63 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
 });
 
 function report(e) {
-  const status = `Помилка: ${e.message}`;
+  const status = `⚠️ ${e.message}`;
   chrome.storage.local.set({ status });
   return status;
 }
 
-const send = (tg, chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
-
 async function check(force) {
-  const { token, chatId, seen = {}, alloBest = {}, checkedAt = {} } = await chrome.storage.local.get(['token', 'chatId', 'seen', 'alloBest', 'checkedAt']);
-  if (!token || !chatId) throw new Error('вкажи токен бота і chat id');
-  const tg = telegram(token);
-  const { data } = await loadState(tg, chatId);
+  const api = await workerApi();
+  const data = await api.state();
+  const { seen = {}, shopBest = {}, checkedAt = {} } = await chrome.storage.local.get(['seen', 'shopBest', 'checkedAt']);
+  const olxOn = settingsOf(data).sites.includes('olx');
+  const shops = shopsFor(data, 'browser');
   const errors = [];
   let sent = 0;
 
   // s.raw: free text the cloud job has not turned into a proper query yet
-  const due = (s) => force || !checkedAt[s.id] || Date.now() - checkedAt[s.id] >= CHECK_EVERY_MS;
-  const searches = data.searches.filter((s) => !s.raw && due(s));
+  const searches = data.searches.filter((s) => !s.raw && (force || isDue(checkedAt[s.id], data)));
   for (const s of searches) {
     checkedAt[s.id] = Date.now();
-    // Allo blocks GitHub servers, so it is checked here like a shop: notify only on a new lowest price.
-    try {
-      const items = pick(await allo(siteQuery(s.q)), s);
-      const prev = alloBest[s.id];
-      if (items[0] && (!prev || items[0].price < prev.price)) {
-        await send(tg, chatId, formatList(prev ? `📉 Allo: нова найнижча ціна — «${s.q}»` : `🏪 Allo: найдешевше зараз — «${s.q}»`, items.slice(0, 3)));
-        sent++;
-      }
-      if (items[0]) alloBest[s.id] = { price: items[0].price, site: 'Allo', url: items[0].url };
-    } catch (e) {
-      errors.push(e.message);
+
+    // Shops that block servers (Allo): notify only on a new lowest price, like the cloud does.
+    const results = await Promise.allSettled(shops.map((site) => site.search(siteQuery(s.q))));
+    results.forEach((r, i) => r.status === 'rejected' && errors.push(`${shops[i].name}: ${r.reason.message}`));
+    const items = pick(results.flatMap((r) => r.value ?? []), s);
+    const prev = shopBest[s.id];
+    if (items[0] && (!prev || items[0].price < prev.price)) {
+      await api.send(formatList(prev ? `📉 Нова найнижча ціна — «${s.q}»` : `🏪 Найдешевше зараз — «${s.q}»`, items.slice(0, 3)));
+      sent++;
     }
+    if (items[0]) shopBest[s.id] = { price: items[0].price, site: items[0].site, url: items[0].url };
 
-    const first = !seen[s.id];
-    // First run: the cheapest offers; afterwards: the newest, to catch fresh listings.
-    const items = pick(await olx(siteQuery(s.q), s.max, first ? 'filter_float_price:asc' : 'created_at:desc'), s);
-    // Also mark the newest listings seen on the first run, or the next run reports them all as new.
-    const newest = first ? pick(await olx(siteQuery(s.q), s.max, 'created_at:desc'), s) : [];
-    const known = new Set(seen[s.id] ?? []);
-    const fresh = first ? items.slice(0, 3) : items.filter((i) => !known.has(i.id)).slice(0, 5);
-    seen[s.id] = [...new Set([...items, ...newest].map((i) => i.id).concat([...known]))].slice(0, 500);
-    if (!fresh.length) continue;
+    if (!olxOn) continue;
+    try {
+      const first = !seen[s.id];
+      // First run: the cheapest offers; afterwards: the newest, to catch fresh listings.
+      const listings = pick(await olx(siteQuery(s.q), s.max, first ? 'filter_float_price:asc' : 'created_at:desc'), s);
+      // Also mark the newest listings seen on the first run, or the next run reports them all as new.
+      const newest = first ? pick(await olx(siteQuery(s.q), s.max, 'created_at:desc'), s) : [];
+      const known = new Set(seen[s.id] ?? []);
+      const fresh = first ? listings.slice(0, 3) : listings.filter((i) => !known.has(i.id)).slice(0, 5);
+      seen[s.id] = [...new Set([...listings, ...newest].map((i) => i.id).concat([...known]))].slice(0, 500);
+      if (!fresh.length) continue;
 
-    const title = first ? `🔎 OLX б/в: найдешевше зараз — «${s.q}»` : `🆕 OLX б/в: нові оголошення — «${s.q}»`;
-    const shop = [s.best, alloBest[s.id]].filter(Boolean).sort((a, b) => a.price - b.price)[0];
-    const shops = shop ? `\n🏪 У магазинах найдешевше: ${shop.price} грн (${shop.site})` : '';
-    await send(tg, chatId, formatList(title, fresh) + shops);
-    sent++;
+      const title = first ? `🔎 OLX б/в: найдешевше зараз — «${s.q}»` : `🆕 OLX б/в: нові оголошення — «${s.q}»`;
+      const shop = [s.best, shopBest[s.id]].filter(Boolean).sort((a, b) => a.price - b.price)[0];
+      const shopLine = shop ? `\n🏪 У магазинах найдешевше: ${shop.price} грн (${shop.site})` : '';
+      await api.send(formatList(title, fresh) + shopLine);
+      sent++;
+    } catch (e) {
+      errors.push(`OLX: ${e.message}`);
+    }
   }
 
   // Keep per-search data only for searches that still exist.
   const keep = (obj) => Object.fromEntries(data.searches.filter((s) => obj[s.id]).map((s) => [s.id, obj[s.id]]));
-  if (!searches.length) {
-    await chrome.storage.local.set({ checkedAt: keep(checkedAt) });
-    return 'Усі пошуки вже перевірені протягом години';
-  }
-  const status = `${new Date().toLocaleString('uk-UA')}: перевірено пошуків — ${searches.length}, повідомлень — ${sent}` +
-    (errors.length ? `\nПомилки: ${[...new Set(errors)].join('; ')}` : '');
-  await chrome.storage.local.set({ seen: keep(seen), alloBest: keep(alloBest), checkedAt: keep(checkedAt), status });
-  return status;
+  const status = searches.length
+    ? `✅ ${new Date().toLocaleString('uk-UA')}: перевірено ${searches.length}, надіслано ${sent}` + (errors.length ? `\n⚠️ ${[...new Set(errors)].join('; ')}` : '')
+    : (await chrome.storage.local.get('status')).status ?? '';
+  await chrome.storage.local.set({ seen: keep(seen), shopBest: keep(shopBest), checkedAt: keep(checkedAt), status, lastRun: Date.now() });
+  return status || 'Усі пошуки вже перевірені, наступна перевірка за розкладом';
 }

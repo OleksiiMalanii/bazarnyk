@@ -10,6 +10,7 @@ export default {
     // Secrets piped into `wrangler secret put` can carry a trailing newline.
     const env = Object.fromEntries(Object.entries(rawEnv).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/ext/')) return extension(request, url, env);
     // Telegram signs every webhook call with the secret given in setWebhook; ignore anything else.
     const authorized = request.headers.get('x-telegram-bot-api-secret-token') === env.WEBHOOK_SECRET
       || request.headers.get('x-setup-key') === env.WEBHOOK_SECRET;
@@ -19,7 +20,7 @@ export default {
     if (url.pathname === '/setup') return new Response(JSON.stringify(await setup(tg, url, env)));
 
     try {
-      await onUpdate(await request.json(), tg, env, ctx);
+      await onUpdate(await request.json(), tg, { ...env, WORKER_URL: url.origin }, ctx);
     } catch (e) {
       console.error(e.message); // answer 200 anyway, or Telegram keeps redelivering the same update
     }
@@ -41,7 +42,8 @@ async function onUpdate(update, tg, env, ctx) {
     const s = parseFree(text);
     return s && { ...s, raw: text };
   };
-  if (!(await handleUpdate(update, { tg, chatId, data: state.data, parse }))) return;
+  const workerUrl = env.WORKER_URL;
+  if (!(await handleUpdate(update, { tg, chatId, data: state.data, parse, workerUrl }))) return;
   await saveState(tg, chatId, state);
   // New search: start the cloud job now instead of waiting up to 30 minutes.
   if (state.data.nextId > nextId && env.GITHUB_TOKEN && env.GITHUB_REPO) ctx.waitUntil(dispatch(env));
@@ -64,4 +66,21 @@ async function setup(tg, url, env) {
   });
   await tg('setMyCommands', { commands: MENU });
   return tg('getWebhookInfo');
+}
+
+// The browser extension talks to the bot only through here, so it never needs the bot token.
+// It authenticates with the key from "🧩 Підключити браузер" (stored in the pinned list).
+async function extension(request, url, env) {
+  const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  const tg = telegram(env.TELEGRAM_BOT_TOKEN);
+  const { data } = await loadState(tg, env.TELEGRAM_CHAT_ID);
+  if (!data.extKey || request.headers.get('x-ext-key') !== data.extKey) return json({ error: 'Код не підходить. Натисни в боті «🧩 Підключити браузер» і встав новий код.' }, 403);
+
+  if (url.pathname === '/ext/state' && request.method === 'GET') return json({ searches: data.searches, settings: data.settings ?? null });
+  if (url.pathname === '/ext/send' && request.method === 'POST') {
+    const { text } = await request.json();
+    await tg('sendMessage', { chat_id: env.TELEGRAM_CHAT_ID, text: String(text).slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true });
+    return json({ ok: true });
+  }
+  return json({ error: 'not found' }, 404);
 }

@@ -4,22 +4,69 @@
   <meta charset="utf-8">
   <title>Bazarnyk</title>
   <style>
-    body { font: 14px system-ui, sans-serif; width: 320px; margin: 16px; color: #222; background: #fff; }
-    label { display: block; margin: 8px 0 4px; font-weight: 600; }
-    input { width: 100%; box-sizing: border-box; padding: 6px; }
-    button { margin: 12px 8px 0 0; padding: 6px 12px; }
-    #status { margin-top: 12px; color: #555; white-space: pre-wrap; }
+    :root { --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --card: #f6f8fa; --accent: #1a7f37; --accent-fg: #ffffff; --border: #d0d7de; --warn: #9a6700; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1b1d21; --fg: #e6edf3; --muted: #9198a1; --card: #24272c; --accent: #2ea043; --accent-fg: #ffffff; --border: #3d444d; --warn: #d29922; }
+    }
+    * { box-sizing: border-box; }
+    body { font: 14px/1.45 system-ui, sans-serif; width: 360px; margin: 0; padding: 16px; color: var(--fg); background: var(--bg); }
+    h1 { font-size: 18px; margin: 0 0 12px; }
+    h2 { font-size: 15px; margin: 0 0 8px; }
+    ol { margin: 0 0 12px; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    input { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--fg); font: inherit; }
+    button { font: inherit; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; }
+    button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); width: 100%; margin-top: 8px; }
+    button:disabled { opacity: .6; cursor: default; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+    .ok { color: var(--accent); font-weight: 600; margin: 0 0 4px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .error { color: var(--warn); white-space: pre-wrap; }
+    #status { white-space: pre-wrap; margin: 8px 0 0; }
+    ul { margin: 4px 0 0; padding-left: 18px; }
+    details { margin-top: 12px; }
+    summary { cursor: pointer; color: var(--muted); }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
-  <h3>Bazarnyk</h3>
-  <label for="token">Токен Telegram-бота</label>
-  <input id="token" type="password" autocomplete="off">
-  <label for="chatId">Chat id</label>
-  <input id="chatId" autocomplete="off">
-  <button id="save">Зберегти</button>
-  <button id="check">Перевірити зараз</button>
-  <div id="status" role="status"></div>
+  <h1>🛒 Bazarnyk</h1>
+
+  <section id="setup" hidden>
+    <h2>Підключи розширення до свого бота</h2>
+    <ol>
+      <li>Відкрий свого бота Bazarnyk у Telegram.</li>
+      <li>Натисни <b>⚙️ Налаштування</b> → <b>🧩 Підключити браузер</b>.</li>
+      <li>Натисни на код у повідомленні (він скопіюється) і встав сюди:</li>
+    </ol>
+    <label for="code" class="muted">Код підключення</label>
+    <input id="code" placeholder="https://….workers.dev#…" autocomplete="off" spellcheck="false">
+    <button id="connect" class="primary">Підключити</button>
+    <p id="setupError" class="error" role="alert"></p>
+  </section>
+
+  <section id="main" hidden>
+    <p class="ok">✅ Підключено до бота</p>
+    <p class="muted" id="sites"></p>
+
+    <div class="card">
+      <h2>Що шукаю</h2>
+      <ul id="searches"></ul>
+      <p class="muted" id="noSearches" hidden>Поки нічого. Напиши боту, що шукаєш, наприклад «драбина до 3000».</p>
+    </div>
+
+    <button id="check" class="primary">🔄 Перевірити зараз</button>
+    <p id="status" class="muted" role="status"></p>
+
+    <p class="muted">Щоб OLX перевірявся сам, браузер має бути відкритий. Знахідки прийдуть у Telegram.</p>
+
+    <details>
+      <summary>Ще</summary>
+      <p class="muted">Змінити сайти й частоту можна в боті: ⚙️ Налаштування.</p>
+      <button id="disconnect">Відключити розширення</button>
+    </details>
+  </section>
+
   <script type="module" src="options.js"></script>
 </body>
 </html>
