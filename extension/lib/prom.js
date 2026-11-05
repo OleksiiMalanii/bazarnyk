@@ -10,6 +10,15 @@ export async function prom(query) {
   return parseProm(await res.text());
 }
 
+// Prom's search page marks everything InStock; only the product page tells the truth.
+export async function promInStock(url) {
+  const res = await fetch(url, { headers: { 'user-agent': USER_AGENT } });
+  if (!res.ok) return true; // unknown: better to show than to hide
+  return isInStock(await res.text());
+}
+
+export const isInStock = (html) => !/schema\.org\/(OutOfStock|Discontinued|SoldOut)/.test(html);
+
 // Prom embeds search results as schema.org Product JSON-LD blocks.
 export function parseProm(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]

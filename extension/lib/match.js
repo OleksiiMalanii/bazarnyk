@@ -4,9 +4,11 @@
 export const stem = (w) => (w.length > 4 ? w.slice(0, -2) : w);
 
 export function matchesQuery(title, query) {
+  // Also compare without spaces, so "60HE" matches "60 HE+".
   const t = title.toLowerCase();
+  const has = (w) => t.includes(w) || t.replace(/\s+/g, '').includes(w);
   const words = query.toLowerCase().split(/\s+/).filter((w) => w.replace(/^-/, '').length >= 3);
-  return words.every((w) => (w.startsWith('-') ? !t.includes(stem(w.slice(1))) : t.includes(stem(w))));
+  return words.every((w) => (w.startsWith('-') ? !has(stem(w.slice(1))) : has(stem(w))));
 }
 
 // Words without the "-exclude" ones, for sending to the site's own search.

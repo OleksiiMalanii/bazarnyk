@@ -5,7 +5,7 @@ import { loadState, saveState, saveMerged } from '../extension/lib/state.js';
 import { parseFree, MENU } from '../extension/lib/commands.js';
 import { handleUpdate } from '../extension/lib/bot.js';
 import { pick, siteQuery } from '../extension/lib/match.js';
-import { prom } from '../extension/lib/prom.js';
+import { prom, promInStock } from '../extension/lib/prom.js';
 import { escape } from '../extension/lib/html.js';
 import { suggestExcludes, suggestMinPrice, parseRequest, AI_VERSION } from './ai.js';
 
@@ -110,8 +110,13 @@ for (const s of state.data.searches.filter((s) => !s.raw)) {
       console.error(`${Object.keys(SHOPS)[i]} failed for "${s.q}": ${r.reason.message}`);
     }
   });
-  const items = pick(results.flatMap((r) => r.value ?? []), s);
-  console.log(`"${s.q}": ${items.length} matching shop items`);
+  // Keep the 3 cheapest that are really in stock (checking product pages one by one, at most 10).
+  const items = [];
+  for (const i of pick(results.flatMap((r) => r.value ?? []), s).slice(0, 10)) {
+    if (items.length === 3) break;
+    if (await promInStock(i.url).catch(() => true)) items.push(i);
+  }
+  console.log(`"${s.q}": ${items.length} matching shop items in stock`);
   const top = items[0];
   if (top && (!s.best || top.price < s.best.price)) {
     const title = s.best ? `📉 Магазини: нова найнижча ціна — «${s.q}»` : `🏪 Магазини: найдешевше зараз — «${s.q}»`;

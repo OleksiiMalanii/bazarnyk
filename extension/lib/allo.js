@@ -16,7 +16,8 @@ export function parseAllo(html) {
     .map((card) => {
       const link = card.match(/<a href="([^"]+)" title="([^"]*)" class="product-card__title"/);
       const sum = card.match(/class="v-pb__cur[^"]*"><span class="sum">([^<]+)</);
-      return link && sum && {
+      // "Немає в наявності" cards still show a price; skip them.
+      return link && sum && !card.includes('out-stock') && {
         site: 'Allo',
         id: `allo:${link[1]}`,
         title: decode(link[2]),

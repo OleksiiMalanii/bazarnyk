@@ -4,14 +4,16 @@ import { pick, siteQuery } from './lib/match.js';
 import { olx } from './lib/olx.js';
 import { allo } from './lib/allo.js';
 
-const ensureAlarm = () => chrome.alarms.create('check', { delayInMinutes: 1, periodInMinutes: 60 });
+// Wake every 10 min so new searches get OLX results quickly; each search is still checked once an hour.
+const CHECK_EVERY_MS = 55 * 60 * 1000;
+const ensureAlarm = () => chrome.alarms.create('check', { delayInMinutes: 1, periodInMinutes: 10 });
 chrome.runtime.onInstalled.addListener(ensureAlarm);
 chrome.runtime.onStartup.addListener(ensureAlarm);
-chrome.alarms.onAlarm.addListener((a) => a.name === 'check' && check().catch(report));
+chrome.alarms.onAlarm.addListener((a) => a.name === 'check' && check(false).catch(report));
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg !== 'check-now') return;
-  check().then(reply, (e) => reply(report(e)));
+  check(true).then(reply, (e) => reply(report(e)));
   return true; // reply asynchronously
 });
 
@@ -23,8 +25,8 @@ function report(e) {
 
 const send = (tg, chatId, text) => tg('sendMessage', { chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true });
 
-async function check() {
-  const { token, chatId, seen = {}, alloBest = {} } = await chrome.storage.local.get(['token', 'chatId', 'seen', 'alloBest']);
+async function check(force) {
+  const { token, chatId, seen = {}, alloBest = {}, checkedAt = {} } = await chrome.storage.local.get(['token', 'chatId', 'seen', 'alloBest', 'checkedAt']);
   if (!token || !chatId) throw new Error('вкажи токен бота і chat id');
   const tg = telegram(token);
   const { data } = await loadState(tg, chatId);
@@ -32,7 +34,10 @@ async function check() {
   let sent = 0;
 
   // s.raw: free text the cloud job has not turned into a proper query yet
-  for (const s of data.searches.filter((s) => !s.raw)) {
+  const due = (s) => force || !checkedAt[s.id] || Date.now() - checkedAt[s.id] >= CHECK_EVERY_MS;
+  const searches = data.searches.filter((s) => !s.raw && due(s));
+  for (const s of searches) {
+    checkedAt[s.id] = Date.now();
     // Allo blocks GitHub servers, so it is checked here like a shop: notify only on a new lowest price.
     try {
       const items = pick(await allo(siteQuery(s.q)), s);
@@ -63,10 +68,14 @@ async function check() {
     sent++;
   }
 
-  const status = `${new Date().toLocaleString('uk-UA')}: перевірено пошуків — ${data.searches.length}, повідомлень — ${sent}` +
-    (errors.length ? `\nПомилки: ${[...new Set(errors)].join('; ')}` : '');
   // Keep per-search data only for searches that still exist.
   const keep = (obj) => Object.fromEntries(data.searches.filter((s) => obj[s.id]).map((s) => [s.id, obj[s.id]]));
-  await chrome.storage.local.set({ seen: keep(seen), alloBest: keep(alloBest), status });
+  if (!searches.length) {
+    await chrome.storage.local.set({ checkedAt: keep(checkedAt) });
+    return 'Усі пошуки вже перевірені протягом години';
+  }
+  const status = `${new Date().toLocaleString('uk-UA')}: перевірено пошуків — ${searches.length}, повідомлень — ${sent}` +
+    (errors.length ? `\nПомилки: ${[...new Set(errors)].join('; ')}` : '');
+  await chrome.storage.local.set({ seen: keep(seen), alloBest: keep(alloBest), checkedAt: keep(checkedAt), status });
   return status;
 }

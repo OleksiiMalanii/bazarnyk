@@ -188,3 +188,16 @@ test('saveMerged keeps searches the Worker added or deleted meanwhile', async ()
   await saveMerged(tg, 7, state);
   assert.deepEqual(JSON.parse(pinned.text.slice(HEADER.length)), { searches: [{ id: 2, q: 'b', best: 2 }, { id: 3, q: 'c' }], nextId: 4 });
 });
+
+test('availability: Prom product page and Allo out-of-stock cards', async () => {
+  const { isInStock } = await import('../extension/lib/prom.js');
+  assert.equal(isInStock('"availability":"http://schema.org/OutOfStock"'), false);
+  assert.equal(isInStock('"availability":"http://schema.org/InStock"'), true);
+  const card = '<div class="product-card"><a href="https://allo/1" title="Wooting" class="product-card__title">W</a>' +
+    '<div class="v-pb__cur"><span class="sum">999</span></div><span class="v-pb__text out-stock"> Немає в наявності </span></div>';
+  assert.deepEqual(parseAllo(card), []);
+});
+
+test('matchesQuery ignores spaces inside model names', () => {
+  assert.ok(matchesQuery('Клавіатура WOOTING 60 HE+', 'Wooting 60HE'));
+});
