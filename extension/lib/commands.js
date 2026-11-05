@@ -1,5 +1,5 @@
 import { escape } from './html.js';
-import { SITES, EVERY_OPTIONS, settingsOf } from './sites.js';
+import { SITES, EVERY_OPTIONS, settingsOf, everyLabel } from './sites.js';
 
 export const BUTTONS = { add: '➕ Додати пошук', list: '📋 Мої пошуки', settings: '⚙️ Налаштування', help: '❓ Допомога' };
 
@@ -29,7 +29,6 @@ export const HELP = [
   'Слово з мінусом відкидає оголошення з ним: «драбина -книга».',
 ].join('\n');
 
-const everyLabel = (m) => (m < 60 ? `${m} хв` : `${m / 60} год`);
 const chunk = (arr, n) => arr.reduce((rows, x, i) => (i % n ? rows.at(-1).push(x) : rows.push([x]), rows), []);
 
 // Settings screen: tap a site to turn it on/off, tap an interval to pick it.
@@ -41,13 +40,13 @@ export function settingsView(data) {
     'Де шукати — натисни на сайт, щоб увімкнути ✅ чи вимкнути ⬜.',
     '🖥 — цей сайт шукає розширення в браузері (поки браузер відкритий).',
     '',
-    `Як часто перевіряти: зараз кожні <b>${everyLabel(every)}</b>.`,
+    every ? `Як часто перевіряти: зараз кожні <b>${everyLabel(every)}</b>.` : 'Як часто перевіряти: зараз <b>не повторювати</b> — кожен пошук перевіряється один раз.',
   ].join('\n');
   const siteButtons = SITES.map((s) => ({ text: `${sites.includes(s.id) ? '✅' : '⬜'} ${s.name}${s.where === 'browser' ? ' 🖥' : ''}`, callback_data: `site:${s.id}` }));
-  const everyButtons = EVERY_OPTIONS.map((m) => ({ text: `${m === every ? '✅ ' : ''}${everyLabel(m)}`, callback_data: `every:${m}` }));
+  const everyButtons = EVERY_OPTIONS.map((m) => ({ text: `${m === every ? '✅ ' : ''}${m ? everyLabel(m) : '⏸ Не повторювати'}`, callback_data: `every:${m}` }));
   return {
     text,
-    markup: { inline_keyboard: [...chunk(siteButtons, 2), everyButtons, [{ text: '🧩 Підключити браузер (для OLX)', callback_data: 'connect' }]] },
+    markup: { inline_keyboard: [...chunk(siteButtons, 2), everyButtons.slice(0, 4), everyButtons.slice(4), [{ text: '🧩 Підключити браузер (для OLX)', callback_data: 'connect' }]] },
   };
 }
 
@@ -86,10 +85,27 @@ export function addSearch(data, s) {
   return `✅ Шукаю: <b>${escape(s.q)}</b>${s.max ? ` до ${s.max} грн` : ''}\nНапишу, щойно знайду щось підходяще (зазвичай протягом години).`;
 }
 
-// Inline "delete" buttons under the search list.
+const listText = (data) =>
+  ['Твої пошуки. ⏸ — зупинити повторний пошук, ▶️ — відновити, 🗑 — видалити:', ...data.searches.map((s, i) =>
+    `${i + 1}. ${s.paused ? '⏸ ' : ''}${escape(s.q)}${s.max ? ` (до ${s.max} грн)` : ''}${s.paused ? ' — на паузі' : ''}`)].join('\n');
+
+// Buttons under the search list: pause/resume and delete for each search.
 export const listButtons = (data) => ({
-  inline_keyboard: data.searches.map((s, i) => [{ text: `🗑 ${i + 1}. ${s.q}`.slice(0, 60), callback_data: `del:${s.id}` }]),
+  inline_keyboard: data.searches.map((s, i) => [
+    { text: `${s.paused ? '▶️' : '⏸'} ${i + 1}. ${s.q}`.slice(0, 60), callback_data: `pause:${s.id}` },
+    { text: '🗑', callback_data: `del:${s.id}` },
+  ]),
 });
+
+export const listView = (data) => ({ text: listText(data), markup: listButtons(data) });
+
+// "pause:<id>": stops or resumes the repeated checks of one search; returns false if no such search.
+export function togglePause(data, cbData) {
+  const s = data.searches.find((x) => `pause:${x.id}` === cbData);
+  if (!s) return false;
+  s.paused = !s.paused;
+  return true;
+}
 
 // Mutates `data` and returns the reply text (HTML), or null if `text` is not a command.
 export function handleCommand(text, data) {
@@ -106,7 +122,7 @@ export function handleCommand(text, data) {
     }
     case 'list':
       return data.searches.length
-        ? ['Твої пошуки (натисни, щоб видалити):', ...data.searches.map((s, i) => `${i + 1}. ${escape(s.q)}${s.max ? ` (до ${s.max} грн)` : ''}`)].join('\n')
+        ? listText(data)
         : `Пошуків поки немає. ${EXAMPLE}`;
     case 'del': {
       const n = Number(args);

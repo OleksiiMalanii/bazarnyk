@@ -32,7 +32,7 @@ async function check(force) {
   let sent = 0;
 
   // s.raw: free text the cloud job has not turned into a proper query yet
-  const searches = data.searches.filter((s) => !s.raw && (force || isDue(checkedAt[s.id], data)));
+  const searches = data.searches.filter((s) => !s.raw && !s.paused && (force || isDue(checkedAt[s.id], data)));
   for (const s of searches) {
     checkedAt[s.id] = Date.now();
 

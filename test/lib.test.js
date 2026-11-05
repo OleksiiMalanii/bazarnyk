@@ -131,7 +131,7 @@ test('buttons map to commands, list has delete buttons', () => {
   assert.match(handleCommand(BUTTONS.add, data), /Напиши, що шукаєш/);
   handleCommand('/add драбина', data);
   assert.match(handleCommand(BUTTONS.list, data), /1\. драбина/);
-  assert.deepEqual(listButtons(data).inline_keyboard, [[{ text: '🗑 1. драбина', callback_data: 'del:1' }]]);
+  assert.deepEqual(listButtons(data).inline_keyboard, [[{ text: '⏸ 1. драбина', callback_data: 'pause:1' }, { text: '🗑', callback_data: 'del:1' }]]);
   assert.equal(handleCommand('пошукай драбину', data), null); // free text is handled by the caller
 });
 
@@ -267,4 +267,25 @@ test('listing analysis: junk words from real titles, floor from the real median'
   assert.deepEqual(r.not, ['книга', 'глайди']);
   assert.equal(r.min, 3000);
   assert.equal(parseListingsReply('{"relevant": [2], "junk": []}', 'x', null, items).min, null);
+});
+
+test('pause one search, or stop repeating all of them', async () => {
+  const { handleUpdate } = await import('../extension/lib/bot.js');
+  const { isDue } = await import('../extension/lib/sites.js');
+  const edits = [];
+  const tg = async (method, body) => (method === 'editMessageText' && edits.push(body), true);
+  const data = { searches: [{ id: 4, q: 'драбина' }], nextId: 5 };
+  const press = (d) => handleUpdate({ callback_query: { id: 'x', data: d, message: { chat: { id: 7 }, message_id: 3 } } }, { tg, chatId: 7, data });
+  assert.equal(await press('pause:4'), true);
+  assert.equal(data.searches[0].paused, true);
+  assert.match(edits.at(-1).text, /⏸ драбина — на паузі/);
+  assert.equal(edits.at(-1).reply_markup.inline_keyboard[0][0].text, '▶️ 1. драбина');
+  await press('pause:4');
+  assert.equal(data.searches[0].paused, false);
+
+  await press('every:0');
+  const now = Date.now();
+  assert.equal(isDue(undefined, data, now), true); // a new search is still checked once
+  assert.equal(isDue(now - 30 * 86400_000, data, now), false);
+  assert.match(edits.at(-1).text, /не повторювати/);
 });

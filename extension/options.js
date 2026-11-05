@@ -1,8 +1,7 @@
 import { parseCode, workerApi } from './lib/connection.js';
-import { SITES, settingsOf } from './lib/sites.js';
+import { SITES, settingsOf, everyLabel } from './lib/sites.js';
 
 const $ = (id) => document.getElementById(id);
-const everyLabel = (m) => (m < 60 ? `${m} хв` : `${m / 60} год`);
 
 async function show() {
   const { connection, status = '' } = await chrome.storage.local.get(['connection', 'status']);
@@ -16,11 +15,11 @@ async function show() {
     const { sites, every } = settingsOf(data);
     const here = SITES.filter((s) => s.where === 'browser' && sites.includes(s.id)).map((s) => s.name);
     $('sites').textContent = here.length
-      ? `Тут шукаю: ${here.join(', ')} · кожні ${everyLabel(every)}`
+      ? `Тут шукаю: ${here.join(', ')} · ${every ? `кожні ${everyLabel(every)}` : 'без повторів'}`
       : 'У боті вимкнені всі сайти, які шукає браузер (OLX, Алло). Увімкни їх у ⚙️ Налаштування.';
     $('searches').replaceChildren(...data.searches.map((s) => {
       const li = document.createElement('li');
-      li.textContent = `${s.q}${s.max ? ` — до ${s.max} грн` : ''}${s.raw ? ' (уточнюю…)' : ''}`;
+      li.textContent = `${s.q}${s.max ? ` — до ${s.max} грн` : ''}${s.raw ? ' (уточнюю…)' : ''}${s.paused ? ' ⏸ на паузі' : ''}`;
       return li;
     }));
     $('noSearches').hidden = data.searches.length > 0;

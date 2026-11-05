@@ -1,4 +1,4 @@
-import { handleCommand, addSearch, listButtons, settingsView, applySetting, KEYBOARD } from './commands.js';
+import { handleCommand, addSearch, listButtons, listView, togglePause, settingsView, applySetting, KEYBOARD } from './commands.js';
 import { escape } from './html.js';
 
 const NOT_UNDERSTOOD = 'Не зрозумів, що шукати 🙂 Напиши, наприклад: драбина Hailo до 3000';
@@ -21,6 +21,14 @@ export async function handleUpdate(update, { tg, chatId, data, parse, workerUrl 
       const n = data.searches.findIndex((s) => `del:${s.id}` === cb.data) + 1;
       await answer();
       await reply(handleCommand(`/del ${n}`, data));
+      return true;
+    }
+    if (togglePause(data, cb.data)) {
+      // Redraw the list in place, so ⏸/▶️ flips where the user tapped.
+      const view = listView(data);
+      await tg('editMessageText', { chat_id: chatId, message_id: cb.message.message_id, text: view.text, parse_mode: 'HTML', reply_markup: view.markup })
+        .catch((e) => { if (!e.message.includes('not modified')) throw e; });
+      await answer(data.searches.find((s) => `pause:${s.id}` === cb.data).paused ? '⏸ Пошук на паузі' : '▶️ Пошук відновлено');
       return true;
     }
     if (cb.data === 'connect') {

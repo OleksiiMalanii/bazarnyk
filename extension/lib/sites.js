@@ -15,7 +15,10 @@ export const SITES = [
   { id: 'allo', name: 'Алло', where: 'browser', search: allo },
 ];
 
-export const EVERY_OPTIONS = [30, 60, 120, 300]; // minutes
+// minutes; 0 = do not repeat: every search is checked once, right after it is added
+export const EVERY_OPTIONS = [30, 60, 120, 300, 0];
+
+export const everyLabel = (m) => (m === 0 ? 'не повторювати' : m < 60 ? `${m} хв` : `${m / 60} год`);
 
 export const defaultSettings = () => ({ sites: SITES.map((s) => s.id), every: 60 });
 
@@ -28,4 +31,7 @@ export const shopsFor = (data, where) => {
 };
 
 // A search is due when it was never checked or the chosen interval has passed (5 min slack for job timing).
-export const isDue = (checkedAt, data, now = Date.now()) => !checkedAt || now - checkedAt >= (settingsOf(data).every - 5) * 60_000;
+export const isDue = (checkedAt, data, now = Date.now()) => {
+  const { every } = settingsOf(data);
+  return !checkedAt || (every > 0 && now - checkedAt >= (every - 5) * 60_000);
+};

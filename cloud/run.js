@@ -109,7 +109,7 @@ await confirm();
 const force = process.argv.includes('--now');
 let failures = 0;
 let attempts = 0;
-for (const s of state.data.searches.filter((s) => !s.raw)) {
+for (const s of state.data.searches.filter((s) => !s.raw && !s.paused)) {
   const shops = shopsFor(state.data, 'cloud');
   if (!shops.length || (!force && !isDue(s.checkedAt, state.data))) continue;
   const results = await searchShops(s, shops);
